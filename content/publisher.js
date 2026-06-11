@@ -461,8 +461,21 @@
     if (on) { on.click(); await delay(400); }
   }
 
+  // 关掉可能打开的日期/时间下拉浮层：在弹窗标题处触发 mousedown，触发 Arco"点击外部关闭"
+  // 否则下拉开着时，点"确认发布"那一下只会关浮层、不会真正提交，导致卡住超时。
+  function closePickerDropdowns() {
+    const dlg = document.querySelector(SEL.publishDialog);
+    const spot = dlg?.querySelector(".arco-modal-header, .arco-modal-title") || dlg;
+    if (spot) {
+      spot.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, view: window }));
+      spot.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, cancelable: true, view: window }));
+    }
+  }
+
   async function clickConfirmPublish() {
-    await delay(600);
+    await delay(400);
+    closePickerDropdowns(); // 先关下拉浮层，确保"确认发布"是真正提交而非只关浮层
+    await delay(400);
     // 限定在发布设置弹窗内找，并校验按钮文字，避免误点别的弹窗按钮
     const dialog = document.querySelector(SEL.publishDialog) || document;
     const primaries = [...dialog.querySelectorAll(SEL.modalPrimary + ", button.arco-btn-primary")];
