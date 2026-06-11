@@ -44,6 +44,43 @@ $("startDateMode").addEventListener("change", (e) => {
   $("startDate").hidden = e.target.value !== "fixed";
 });
 
+// ---------- 设置持久化：记住上次的选择 ----------
+const SETTINGS_KEY = "popup_settings";
+
+async function restoreSettings() {
+  const { [SETTINGS_KEY]: s } = await chrome.storage.local.get(SETTINGS_KEY);
+  if (s) {
+    if (s.publishMode) {
+      const radio = document.querySelector(`input[name="mode"][value="${s.publishMode}"]`);
+      if (radio) radio.checked = true;
+    }
+    if (s.dailyChapters) $("dailyChapters").value = s.dailyChapters;
+    if (s.startHour) $("startHour").value = s.startHour;
+    if (s.startDateMode) $("startDateMode").value = s.startDateMode;
+    if (s.startDate) $("startDate").value = s.startDate;
+    if (s.customStart) $("customStart").value = s.customStart;
+    if (typeof s.autoRetry === "boolean") $("autoRetry").checked = s.autoRetry;
+    if (s.detectionMode) $("fullDetection").checked = s.detectionMode === "full";
+    if (s.useAI) $("useAI").value = s.useAI;
+    // dryRun（试填模式）不恢复，每次默认关闭，避免下次静默不发布
+  }
+  // 同步各配置区的显隐
+  const mode = currentMode();
+  $("autoCfg").hidden = mode !== "auto";
+  $("customCfg").hidden = mode !== "custom";
+  $("startDate").hidden = $("startDateMode").value !== "fixed";
+}
+
+function saveSettings() {
+  chrome.storage.local.set({ [SETTINGS_KEY]: collectSettings() });
+}
+
+// 任一设置项变化即保存；并在加载时恢复
+document.querySelectorAll("#settings input, #settings select").forEach((el) =>
+  el.addEventListener("change", saveSettings)
+);
+restoreSettings();
+
 // 收集发布设置
 function collectSettings() {
   return {
