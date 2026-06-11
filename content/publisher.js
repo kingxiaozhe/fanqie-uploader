@@ -29,6 +29,23 @@
 
   console.log("📝 章节发布器已加载:", location.href);
 
+  // 主动向后台拉取本标签页要发布的章节（规避 background 推送的竞态）
+  requestTaskWithRetry();
+
+  function requestTaskWithRetry(attempt = 0) {
+    chrome.runtime.sendMessage({ type: "REQUEST_TASK" }, (resp) => {
+      if (chrome.runtime.lastError) return;
+      if (resp && resp.success && resp.task) {
+        console.log("📥 已拉取章节任务:", resp.task.title);
+        fillChapter({ task: resp.task, sessionId: resp.sessionId });
+      } else if (attempt < 6) {
+        setTimeout(() => requestTaskWithRetry(attempt + 1), 500); // 任务可能还没存好，重试
+      } else {
+        console.warn("⚠️ 未拉取到章节任务（可能不是自动上传打开的页面）");
+      }
+    });
+  }
+
   async function fillChapter({ task, sessionId }) {
     if (processing) return;
     processing = true;

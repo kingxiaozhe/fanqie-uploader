@@ -22,6 +22,20 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           await handleOpenPublishTab(msg.data, sendResponse);
           break;
 
+        // 2b) 发布页(publisher)加载好后主动来拉取自己的章节任务（规避推送竞态）
+        case "REQUEST_TASK": {
+          const tabId = sender.tab?.id;
+          const key = "publish_task_" + tabId;
+          const got = await chrome.storage.local.get(key);
+          if (got[key]) {
+            await chrome.storage.local.remove(key);
+            sendResponse({ success: true, task: got[key].task, sessionId: got[key].sessionId });
+          } else {
+            sendResponse({ success: false });
+          }
+          break;
+        }
+
         // 3) 发布器(publisher)发布完成，请求关闭自己的标签页
         case "CLOSE_TAB":
           if (sender.tab?.id) {
@@ -90,17 +104,9 @@ async function handleStartUpload(data, sendResponse) {
 async function handleOpenPublishTab(data, sendResponse) {
   const { url, task, sessionId } = data;
   const tab = await chrome.tabs.create({ url, active: false });
-
+  // 按 tabId 把任务存好，等发布页加载完成后主动来拉取（见 REQUEST_TASK）
   if (tab.id) {
-    const onUpdated = (tabId, info) => {
-      if (tabId === tab.id && info.status === "complete") {
-        chrome.tabs.onUpdated.removeListener(onUpdated);
-        chrome.tabs
-          .sendMessage(tab.id, { type: "FILL_CHAPTER", data: { task, sessionId } })
-          .catch((e) => console.log("[bg] 发送章节数据失败:", e));
-      }
-    };
-    chrome.tabs.onUpdated.addListener(onUpdated);
+    await chrome.storage.local.set({ ["publish_task_" + tab.id]: { task, sessionId } });
   }
   sendResponse({ success: true, tabId: tab.id });
 }
