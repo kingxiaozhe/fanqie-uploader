@@ -85,6 +85,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 // ---- 开始上传：把会话存进 storage，打开番茄作者后台 ----
 async function handleStartUpload(data, sendResponse) {
   const { tasks, sessionId, settings } = data;
+  await chrome.storage.local.remove("upload_control"); // 清除上次的"停止"标记
   await chrome.storage.local.set({
     upload_session: {
       sessionId,

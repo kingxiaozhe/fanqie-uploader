@@ -18,7 +18,44 @@
   let currentSettings = {};   // 本次会话的设置（dryRun / detectionMode 等）
   let dialogHandled = false;  // 发布设置对话框是否已处理（防重复）
   let statusEl = null;        // 页面顶部状态横幅
-  const DEBUG = true;         // 调试模式：失败时保留标签页+红色横幅，不自动关闭/重试
+  const DEBUG = false;        // 调试模式：true=失败保留标签页不重试；正式批量请保持 false
+
+  // ============================================================
+  //  番茄页面选择器集中配置 —— 番茄改版时，只改这里
+  // ============================================================
+  const SEL = {
+    titleInput: ['input[placeholder="请输入标题"]', "input.serial-editor-input-hint-area", 'input[placeholder*="标题"]', 'input[name="title"]'],
+    chapterNumberInput: [".serial-editor-title-left input", ".left-input input"],
+    contentArea: ['.ProseMirror[contenteditable="true"]', ".ProseMirror", '[contenteditable="true"]', 'textarea[name="content"]'],
+    submitButton: ["button.auto-editor-next", "button.publish-button"],
+    submitText: ["下一步", "发布", "提交"],
+    modal: ".arco-modal-content, .arco-modal",
+    modalPrimary: ".arco-modal-footer button.arco-btn-primary",
+    publishDialog: ".arco-modal.publish-confirm-container-new",
+    scheduleSwitchOff: '.arco-switch[aria-checked="false"]',
+    scheduleSwitchOn: '.arco-switch[aria-checked="true"]',
+    pickerInput: ".arco-picker input, input.arco-picker-input, .arco-picker-start-time",
+    calPanel: ".arco-picker-container",
+    calHeaderValue: ".arco-picker-header-value",
+    calHeaderIcon: ".arco-picker-header-icon",
+    calCell: ".arco-picker-cell.arco-picker-cell-in-view:not(.arco-picker-cell-disabled)",
+    calCellValue: ".arco-picker-date-value",
+    timeCol: ".arco-timepicker-column",          // 时间面板的"时/分"列
+    timeCell: ".arco-timepicker-cell",            // 时间面板里的每个数字格
+    successToast: ".arco-message-success, .arco-notification-success",
+    errorToast: ".arco-message-error, .arco-notification-error",
+    radio: ".arco-radio",
+  };
+
+  // 轮询等待条件成立（替代写死的 delay，更稳更快）。返回是否在超时前成立。
+  async function waitFor(fn, { timeout = 8000, interval = 200 } = {}) {
+    const end = Date.now() + timeout;
+    while (Date.now() < end) {
+      try { if (fn()) return true; } catch (_) {}
+      await delay(interval);
+    }
+    return false;
+  }
 
   // 顶部状态横幅 + 转发日志到后台（调试用，单看一处即可）
   function setStatus(text, level = "info") {
@@ -112,49 +149,19 @@
   }
 
   // ---------- 等表单就绪 ----------
-  function waitForForm() {
-    return new Promise((resolve, reject) => {
-      let n = 0;
-      const timer = setInterval(() => {
-        n++;
-        dismissDraftPrompt();      // 草稿提示 → 放弃
-        dismissVersionConflict();  // 版本冲突 → 继续编辑本地
-        if (findTitleInput() && findContentArea()) {
-          clearInterval(timer);
-          resolve();
-        } else if (n >= 30) {
-          clearInterval(timer);
-          reject(new Error("表单加载超时"));
-        }
-      }, 500);
-    });
+  async function waitForForm() {
+    const ready = await waitFor(() => {
+      dismissDraftPrompt();      // 草稿提示 → 继续编辑
+      dismissVersionConflict();  // 版本冲突 → 继续编辑本地
+      return findTitleInput() && findContentArea();
+    }, { timeout: 15000, interval: 500 });
+    if (!ready) throw new Error("表单加载超时");
   }
 
-  // ---------- 元素查找（多重选择器兜底）----------
-  function findTitleInput() {
-    return query([
-      'input[placeholder="请输入标题"]',
-      "input.serial-editor-input-hint-area",
-      'input[placeholder*="标题"]',
-      'input[name="title"]',
-    ]);
-  }
-
-  function findChapterNumberInput() {
-    return query([
-      ".serial-editor-title-left input",
-      ".left-input input",
-    ]);
-  }
-
-  function findContentArea() {
-    return query([
-      '.ProseMirror[contenteditable="true"]',
-      ".ProseMirror",
-      '[contenteditable="true"]',
-      'textarea[name="content"]',
-    ]);
-  }
+  // ---------- 元素查找（多重选择器兜底，全部走 SEL 配置）----------
+  function findTitleInput() { return query(SEL.titleInput); }
+  function findChapterNumberInput() { return query(SEL.chapterNumberInput); }
+  function findContentArea() { return query(SEL.contentArea); }
 
   // ---------- 填标题 / 章节号 ----------
   async function fillTitle(task) {
@@ -218,8 +225,7 @@
   async function submitAndConfirm() {
     // 优先专用 class，再按精确文本找，避免误点"发布设置/发布记录"等
     const clickSubmit = () => {
-      const btn = query(["button.auto-editor-next", "button.publish-button"]) ||
-        findButtonByText(["下一步", "发布", "提交"]);
+      const btn = query(SEL.submitButton) || findButtonByText(SEL.submitText);
       if (btn) { btn.click(); return true; }
       return false;
     };
@@ -252,7 +258,7 @@
         }
 
         // ① 发布设置对话框（含定时开关 + 日期/时间选择器）——只处理一次
-        const publishDialog = document.querySelector(".arco-modal.publish-confirm-container-new");
+        const publishDialog = document.querySelector(SEL.publishDialog);
         if (publishDialog && !dialogHandled) {
           dialogHandled = true;
           clearInterval(timer);
@@ -269,7 +275,7 @@
         // ② 其它确认类弹窗（错别字提示 / 二次确认等）——直接点确认
         const genericModal = document.querySelector(".arco-modal-content");
         if (genericModal && !publishDialog) {
-          const confirm = document.querySelector(".arco-modal-footer button.arco-btn-primary");
+          const confirm = document.querySelector(SEL.modalPrimary);
           if (confirm) confirm.click();
         }
 
@@ -289,9 +295,9 @@
       const timer = setInterval(() => {
         n++;
         const onManage = /\/main\/writer\/chapter-manage\/\d+/.test(location.href);
-        const successToast = document.querySelector(".arco-message-success, .arco-notification-success");
-        const errToast = document.querySelector(".arco-message-error, .arco-notification-error");
-        const dialogGone = !document.querySelector(".arco-modal.publish-confirm-container-new");
+        const successToast = document.querySelector(SEL.successToast);
+        const errToast = document.querySelector(SEL.errorToast);
+        const dialogGone = !document.querySelector(SEL.publishDialog);
 
         if (errToast && (errToast.textContent || "").trim().length > 3) {
           setStatus("❌ 发布报错：" + errToast.textContent.trim(), "error");
@@ -323,9 +329,9 @@
   // 设置「是否使用AI」单选（默认否）
   async function setAIChoice() {
     const want = currentSettings.useAI === "yes" ? "是" : "否";
-    const dialog = document.querySelector(".arco-modal.publish-confirm-container-new") || document;
+    const dialog = document.querySelector(SEL.publishDialog) || document;
     // 只在含「是否使用AI」字样的那一行附近找单选项
-    const radios = dialog.querySelectorAll(".arco-radio");
+    const radios = dialog.querySelectorAll(SEL.radio);
     for (const r of radios) {
       if ((r.textContent || "").trim() === want) {
         const input = r.querySelector('input[type="radio"]');
@@ -346,13 +352,11 @@
     setStatus("⏰ 设置定时发布：" + date + " " + time);
 
     // 打开"定时发布"开关（当前关闭时）
-    const off = document.querySelector('.arco-switch[aria-checked="false"]');
+    const off = document.querySelector(SEL.scheduleSwitchOff);
     if (off) { off.click(); await delay(800); }
 
-    // 找日期输入框（按当前值的格式区分）
-    const pickers = document.querySelectorAll(
-      ".arco-picker input, input.arco-picker-input, .arco-picker-start-time"
-    );
+    // 找日期/时间输入框（按当前值的格式区分）
+    const pickers = document.querySelectorAll(SEL.pickerInput);
     let dateInput = null, timeInput = null;
     for (const el of pickers) {
       const v = el.value || el.getAttribute("value") || "";
@@ -365,14 +369,16 @@
       return;
     }
 
-    const ok = await pickArcoDate(dateInput, d);
-    if (ok) setStatus("⏰ 已选日期 " + date + "（时间沿用 " + (timeInput?.value || "默认") + "）");
-    else setStatus("⚠️ 日历里没点中 " + date + "，可能用了默认值（需校准日历DOM）", "error");
+    const dok = await pickArcoDate(dateInput, d);
 
-    // 时间：番茄默认 06:00；若目标时间不同则提示（暂未自动改时间）
+    // 时间：若与目标不同则尝试用时间选择器设置（多更错开时刻需要）
+    let tok = true;
     if (timeInput && timeInput.value && timeInput.value.slice(0, 5) !== time) {
-      console.warn("⚠️ 目标时间", time, "与当前", timeInput.value, "不同，暂未自动设置时间");
+      tok = await pickArcoTime(timeInput, d);
     }
+
+    if (dok) setStatus("⏰ 已设定时 " + date + " " + time + "（日期✓ 时间" + (tok ? "✓" : "✗") + "）");
+    else setStatus("⚠️ 日历没点中 " + date + "（需校准DOM）", "error");
   }
 
   // 派发完整鼠标事件序列（Arco 日历靠 mousedown 选中，单纯 .click() 不生效）
@@ -390,32 +396,26 @@
     input.focus();
     realClick(wrapper);
 
-    let panel = null;
-    for (let i = 0; i < 12 && !panel; i++) {
-      await delay(200);
-      panel = document.querySelector(".arco-picker-container");
-    }
+    await waitFor(() => document.querySelector(SEL.calPanel), { timeout: 2500 });
+    const panel = document.querySelector(SEL.calPanel);
     if (!panel) { console.warn("⚠️ 日历面板未出现"); return false; }
 
-    // 翻到目标年月（头部 .arco-picker-header-value 文本如「2026年6月」）
+    // 翻到目标年月（头部如「2026年6月」）
     const targetYM = target.getFullYear() * 12 + target.getMonth();
     for (let i = 0; i < 24; i++) {
-      const val = panel.querySelector(".arco-picker-header-value");
+      const val = panel.querySelector(SEL.calHeaderValue);
       const ym = parseYearMonth(val?.textContent || "");
       if (ym === null || ym === targetYM) break;
-      const icons = panel.querySelectorAll(".arco-picker-header-icon"); // [双左,左,右,双右]
-      const icon = ym < targetYM ? icons[2] : icons[1];                  // 下月 / 上月
+      const icons = panel.querySelectorAll(SEL.calHeaderIcon); // [双左,左,右,双右]
+      const icon = ym < targetYM ? icons[2] : icons[1];        // 下月 / 上月
       if (!icon) break;
       realClick(icon);
       await delay(300);
     }
 
     // 点目标日（本月内、未禁用的格子）
-    const cells = panel.querySelectorAll(
-      ".arco-picker-cell.arco-picker-cell-in-view:not(.arco-picker-cell-disabled)"
-    );
-    for (const cell of cells) {
-      const v = cell.querySelector(".arco-picker-date-value");
+    for (const cell of panel.querySelectorAll(SEL.calCell)) {
+      const v = cell.querySelector(SEL.calCellValue);
       if (v && v.textContent.trim() === String(target.getDate())) {
         realClick(cell);
         await delay(400);
@@ -423,6 +423,29 @@
       }
     }
     return false;
+  }
+
+  // 模拟点击 Arco 时间选择器选时:分（多更错开时刻用）。返回是否成功。
+  async function pickArcoTime(input, target) {
+    realClick(input.closest(".arco-picker") || input);
+    const ok = await waitFor(() => document.querySelector(SEL.timeCol), { timeout: 2500 });
+    if (!ok) { console.warn("⚠️ 时间面板未出现"); return false; }
+    const cols = document.querySelectorAll(SEL.timeCol); // 通常 [时, 分]（可能含秒）
+    const want = [target.getHours(), target.getMinutes()];
+    let done = 0;
+    for (let c = 0; c < Math.min(2, cols.length); c++) {
+      const target2 = String(want[c]).padStart(2, "0");
+      for (const cell of cols[c].querySelectorAll(SEL.timeCell)) {
+        const t = (cell.textContent || "").trim();
+        if (t === target2 || t === String(want[c])) {
+          realClick(cell);
+          await delay(250);
+          done++;
+          break;
+        }
+      }
+    }
+    return done >= 1;
   }
 
   // 解析日历头部 "2026年6月" / "2026-06" / "2026 / 06" → year*12 + (month-1)
@@ -434,15 +457,15 @@
 
   async function setImmediateInDialog() {
     // 若定时开关是开启状态，关掉它 = 立即发布
-    const on = document.querySelector('.arco-switch[aria-checked="true"]');
+    const on = document.querySelector(SEL.scheduleSwitchOn);
     if (on) { on.click(); await delay(400); }
   }
 
   async function clickConfirmPublish() {
     await delay(600);
     // 限定在发布设置弹窗内找，并校验按钮文字，避免误点别的弹窗按钮
-    const dialog = document.querySelector(".arco-modal.publish-confirm-container-new") || document;
-    const primaries = [...dialog.querySelectorAll(".arco-modal-footer button.arco-btn-primary, button.arco-btn-primary")];
+    const dialog = document.querySelector(SEL.publishDialog) || document;
+    const primaries = [...dialog.querySelectorAll(SEL.modalPrimary + ", button.arco-btn-primary")];
     let btn = primaries.find((b) => {
       const t = (b.textContent || "").trim();
       return t.includes("确认发布") || t === "确定" || t === "发布";
@@ -467,7 +490,7 @@
   // 「有刚刚更新的草稿，是否继续编辑？」提示：点「继续编辑」
   // ⚠️ 必须点继续编辑——点"放弃"会把我们刚填好的标题/正文一起清空（正文字数变 0）。
   function dismissDraftPrompt() {
-    for (const m of document.querySelectorAll(".arco-modal-content, .arco-modal")) {
+    for (const m of document.querySelectorAll(SEL.modal)) {
       const t = m.textContent || "";
       if (!t.includes("草稿") || !t.includes("继续编辑")) continue;
       for (const b of m.querySelectorAll("button")) {
@@ -483,7 +506,7 @@
 
   // 「版本冲突提示」：点「继续编辑本地」(保留我们刚填的内容，而不是云端旧版本)
   function dismissVersionConflict() {
-    for (const m of document.querySelectorAll(".arco-modal-content, .arco-modal")) {
+    for (const m of document.querySelectorAll(SEL.modal)) {
       if (!(m.textContent || "").includes("版本冲突")) continue;
       for (const b of m.querySelectorAll("button")) {
         if ((b.textContent || "").trim() === "继续编辑本地") {
@@ -498,7 +521,7 @@
 
   // 「请选择内容检测方式」弹窗：返回应点击的按钮（默认仅基础检测）
   function findDetectionButton() {
-    const modals = document.querySelectorAll(".arco-modal-content, .arco-modal");
+    const modals = document.querySelectorAll(SEL.modal);
     for (const m of modals) {
       if (!m.textContent?.includes("内容检测方式")) continue;
       // 默认全面检测（每章 2 次额度）；仅当显式设为 basic 时才用基础检测

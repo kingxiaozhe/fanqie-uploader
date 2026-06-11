@@ -15,6 +15,17 @@ $("selectAll").addEventListener("change", (e) => {
 });
 $("start").addEventListener("click", onStart);
 
+// 打开侧边进度面板
+$("openPanel").addEventListener("click", async () => {
+  try {
+    const win = await chrome.windows.getCurrent();
+    await chrome.sidePanel.open({ windowId: win.id });
+    window.close();
+  } catch (e) {
+    alert("打开进度面板失败：" + e.message);
+  }
+});
+
 // 发布模式切换：显示对应的配置区
 document.querySelectorAll('input[name="mode"]').forEach((r) =>
   r.addEventListener("change", () => {

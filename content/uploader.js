@@ -79,7 +79,9 @@
     }
     await saveSession();
 
+    session.status = "uploading";
     const pending = session.tasks.filter((t) => t.status !== "uploaded").length;
+    await saveSession();
     setIndicator(`🚀 准备上传 ${pending} 章（共 ${session.tasks.length}）`, "info");
     await processNext();
   }
@@ -120,6 +122,16 @@
   // ---------- 串行处理 ----------
   async function processNext() {
     if (!session) return;
+
+    // 停止控制：用户在进度面板点了"停止"
+    const { upload_control } = await chrome.storage.local.get("upload_control");
+    if (upload_control === "stop") {
+      session.status = "stopped";
+      await saveSession();
+      setIndicator("⏹ 已停止上传", "warning");
+      busy = false;
+      return;
+    }
 
     // 跳过已上传的章节
     while (session.currentIndex < session.tasks.length &&
@@ -170,6 +182,19 @@
     if (!session) return;
     const s = session.settings || {};
     const used = session.retries[taskId] || 0;
+    const task = session.tasks.find((x) => x.id === taskId);
+
+    // 防重复：重试前先看这章是不是其实已经发出去了（点过"下一步"就建了草稿章节）
+    // 是则标记完成、跳过，绝不重发，避免产生重复章节
+    if (task && (await isChapterAlreadyPublished(task))) {
+      task.status = "uploaded";
+      console.log("✅ 该章实际已存在，跳过重试，避免重复:", task.title);
+      setIndicator(`✅ 第 ${session.currentIndex + 1} 章已存在，跳过`, "info");
+      session.currentIndex += 1;
+      await saveSession();
+      setTimeout(processNext, 1000);
+      return;
+    }
 
     if (s.autoRetry && used < (s.maxRetries || 3)) {
       session.retries[taskId] = used + 1;
@@ -260,6 +285,16 @@
     const norm = (s) => (s || "").replace(/^第\d+章[：:]\s*/, "").trim();
     const x = norm(a), y = norm(b);
     return !!x && (x === y || x.includes(y) || y.includes(x));
+  }
+
+  // 防重复：检查这一章是否已存在于章节管理页（按章节号或标题匹配）
+  async function isChapterAlreadyPublished(task) {
+    await delay(800); // 给页面一点时间刷新出新章
+    const published = scrapePublishedChapters();
+    return published.some((p) =>
+      (task.chapterNumber && p.chapterNumber === task.chapterNumber) ||
+      sameTitle(p.title, task.title)
+    );
   }
 
   // ---------- 发布页 URL ----------

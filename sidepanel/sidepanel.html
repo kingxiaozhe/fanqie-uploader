@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    :root { color-scheme: light dark; }
+    body { margin: 0; padding: 12px; font: 13px/1.5 system-ui, sans-serif; }
+    h1 { font-size: 15px; margin: 0 0 8px; }
+    .summary { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+    .chip { padding: 3px 8px; border-radius: 12px; font-size: 12px; background: #eef; }
+    .chip.done { background: #e3f6e8; color: #1a7f37; }
+    .chip.failed { background: #fde8e8; color: #c0392b; }
+    .chip.pending { background: #eef1f4; color: #555; }
+    .bar { height: 6px; border-radius: 3px; background: #eee; overflow: hidden; margin-bottom: 10px; }
+    .bar > i { display: block; height: 100%; background: #27ae60; transition: width .3s; }
+    button { font: inherit; padding: 7px 12px; border-radius: 8px; cursor: pointer; border: 1px solid #e74c3c; background: #e74c3c; color: #fff; }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    #list { border: 1px solid #e0e0e0; border-radius: 8px; max-height: 60vh; overflow: auto; }
+    .item { display: flex; gap: 6px; align-items: center; padding: 5px 9px; border-bottom: 1px solid #f0f0f0; }
+    .item:last-child { border-bottom: none; }
+    .item .t { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .item .badge { font-size: 11px; padding: 1px 6px; border-radius: 8px; }
+    .badge.uploaded { background: #e3f6e8; color: #1a7f37; }
+    .badge.failed { background: #fde8e8; color: #c0392b; }
+    .badge.pending { background: #eef1f4; color: #777; }
+    .time { color: #999; font-size: 11px; }
+    .empty { padding: 24px; text-align: center; color: #aaa; }
+    .muted { color: #888; font-size: 12px; margin: 6px 0; }
+  </style>
+</head>
+<body>
+  <h1>📊 上传进度</h1>
+  <div id="proj" class="muted"></div>
+  <div class="summary" id="summary"></div>
+  <div class="bar"><i id="barfill" style="width:0%"></i></div>
+  <div class="row" style="margin-bottom:10px;">
+    <button id="stop" disabled>⏹ 停止上传</button>
+  </div>
+  <div id="list"><div class="empty">暂无上传任务</div></div>
+  <script src="sidepanel.js"></script>
+</body>
+</html>

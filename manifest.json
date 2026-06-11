@@ -3,8 +3,9 @@
   "name": "番茄小说批量上传器（脚手架）",
   "version": "0.1.0",
   "description": "选择本地章节文件夹，自动批量发布到番茄小说作者后台。纯手写 MV3 脚手架。",
-  "permissions": ["storage", "tabs", "notifications"],
+  "permissions": ["storage", "tabs", "notifications", "sidePanel"],
   "host_permissions": ["https://fanqienovel.com/*"],
+  "side_panel": { "default_path": "sidepanel/sidepanel.html" },
   "icons": {
     "16": "icons/icon16.png",
     "32": "icons/icon32.png",
