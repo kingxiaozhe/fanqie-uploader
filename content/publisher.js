@@ -367,41 +367,49 @@
     }
   }
 
+  // 派发完整鼠标事件序列（Arco 日历靠 mousedown 选中，单纯 .click() 不生效）
+  function realClick(el) {
+    const opts = { bubbles: true, cancelable: true, view: window };
+    el.dispatchEvent(new MouseEvent("mousedown", opts));
+    el.dispatchEvent(new MouseEvent("mouseup", opts));
+    el.dispatchEvent(new MouseEvent("click", opts));
+  }
+
   // 模拟点击 Arco 日历选日期：打开面板→翻到目标月→点中那一天
   async function pickArcoDate(input, target) {
+    // 打开日历面板（聚焦 + 真实点击输入框/外层包裹）
+    const wrapper = input.closest(".arco-picker") || input;
     input.focus();
-    input.click();
-    await delay(500);
+    realClick(wrapper);
 
-    const panel = document.querySelector(
-      ".arco-picker-container, .arco-picker-range-container, .arco-panel-date, .arco-datepicker"
-    );
-    if (!panel) { console.warn("⚠️ 未找到日历面板"); return false; }
+    let panel = null;
+    for (let i = 0; i < 12 && !panel; i++) {
+      await delay(200);
+      panel = document.querySelector(".arco-picker-container");
+    }
+    if (!panel) { console.warn("⚠️ 日历面板未出现"); return false; }
 
+    // 翻到目标年月（头部 .arco-picker-header-value 文本如「2026年6月」）
     const targetYM = target.getFullYear() * 12 + target.getMonth();
-    // 翻月：最多翻 24 次防死循环
     for (let i = 0; i < 24; i++) {
-      const title = panel.querySelector(".arco-picker-header-title, .arco-picker-header-value, .arco-picker-header-label");
-      const ym = parseYearMonth(title?.textContent || "");
-      if (ym === null) break;            // 解析不出就直接尝试点日
-      if (ym === targetYM) break;
-      const icons = panel.querySelectorAll(".arco-picker-header-icon");
-      // Arco 头部图标顺序通常为 [上一年, 上一月, 下一月, 下一年]
-      const icon = ym < targetYM ? icons[icons.length - 2] : icons[1];
+      const val = panel.querySelector(".arco-picker-header-value");
+      const ym = parseYearMonth(val?.textContent || "");
+      if (ym === null || ym === targetYM) break;
+      const icons = panel.querySelectorAll(".arco-picker-header-icon"); // [双左,左,右,双右]
+      const icon = ym < targetYM ? icons[2] : icons[1];                  // 下月 / 上月
       if (!icon) break;
-      icon.click();
-      await delay(250);
+      realClick(icon);
+      await delay(300);
     }
 
-    // 点目标日（只点"本月内、未禁用"的单元格）
+    // 点目标日（本月内、未禁用的格子）
     const cells = panel.querySelectorAll(
-      ".arco-picker-cell.arco-picker-cell-in-view:not(.arco-picker-cell-disabled), " +
-      "td.arco-picker-cell-in-view:not(.arco-picker-cell-disabled)"
+      ".arco-picker-cell.arco-picker-cell-in-view:not(.arco-picker-cell-disabled)"
     );
-    for (const c of cells) {
-      const inner = c.querySelector(".arco-picker-date-value, .arco-picker-cell-inner, .arco-picker-date") || c;
-      if ((inner.textContent || "").trim() === String(target.getDate())) {
-        inner.click();
+    for (const cell of cells) {
+      const v = cell.querySelector(".arco-picker-date-value");
+      if (v && v.textContent.trim() === String(target.getDate())) {
+        realClick(cell);
         await delay(400);
         return true;
       }
