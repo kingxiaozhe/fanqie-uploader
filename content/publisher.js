@@ -128,10 +128,26 @@
       await fillContent(task);
       await delay(1500); // 等番茄注册正文并自动保存，避免"下一步"因内容未就绪而无效
 
-      // 点下一步前校验正文真的填进去了（番茄富文本偶发不注册）。
-      // 空则在"创建章节之前"失败——既不会发空章，也安全可重试（submitted 仍为 false）。
+      // 点下一步前校验正文真的填进去了（番茄富文本偶发不注册，或被草稿弹窗打断）。
+      // 先补填一次；仍为空则在"创建章节之前"失败——既不会发空章，也安全可重试。
       if (task.content && (findContentArea()?.textContent || "").trim().length < 5) {
-        throw new Error("正文未成功填入，已中止（可安全重试）");
+        setStatus("📄 正文未注册，补填一次…");
+        dismissDraftPrompt();
+        dismissVersionConflict();
+        await delay(800);
+        await fillContent(task);
+        await delay(1500);
+        if ((findContentArea()?.textContent || "").trim().length < 5) {
+          throw new Error("正文未成功填入，已中止（可安全重试）");
+        }
+      }
+
+      // 草稿/冲突弹窗可能打断过填写——标题/章节号空了就补填
+      const titleEl = findTitleInput();
+      if (titleEl && !(titleEl.value || "").trim()) {
+        setStatus("✏️ 标题为空，补填章节号/标题…");
+        await fillTitle(task);
+        await delay(500);
       }
 
       // 🧪 试填模式：填完就停，不提交、不关页，让用户检查
@@ -545,35 +561,30 @@
   }
 
   // 「有刚刚更新的草稿，是否继续编辑？」提示：点「继续编辑」
-  // ⚠️ 必须点继续编辑——点"放弃"会把我们刚填好的标题/正文一起清空（正文字数变 0）。
+  // ⚠️ 不依赖弹窗类名（这个"提示"弹窗可能不是标准 Arco modal）——
+  //    只要页面上出现提示文字，就全局找文字精确为「继续编辑」的按钮点掉。
+  //    必须点继续编辑：点"放弃"会把我们刚填好的标题/正文一起清空。
   function dismissDraftPrompt() {
-    for (const m of document.querySelectorAll(SEL.modal)) {
-      const t = m.textContent || "";
-      if (!t.includes("草稿") || !t.includes("继续编辑")) continue;
-      for (const b of m.querySelectorAll("button")) {
-        if ((b.textContent || "").trim() === "继续编辑") {
-          realClick(b);
-          setStatus("📝 草稿提示 → 继续编辑（保留已填内容）");
-          return true;
-        }
-      }
-    }
-    return false;
+    if (!(document.body.textContent || "").includes("有刚刚更新的草稿")) return false;
+    const b = [...document.querySelectorAll("button")]
+      .find((x) => (x.textContent || "").trim() === "继续编辑");
+    if (!b) return false;
+    realClick(b);
+    try { b.click(); } catch (_) {}
+    setStatus("📝 草稿提示 → 继续编辑（保留已填内容）");
+    return true;
   }
 
   // 「版本冲突提示」：点「继续编辑本地」(保留我们刚填的内容，而不是云端旧版本)
   function dismissVersionConflict() {
-    for (const m of document.querySelectorAll(SEL.modal)) {
-      if (!(m.textContent || "").includes("版本冲突")) continue;
-      for (const b of m.querySelectorAll("button")) {
-        if ((b.textContent || "").trim() === "继续编辑本地") {
-          realClick(b);
-          setStatus("🔀 版本冲突：已选「继续编辑本地」");
-          return true;
-        }
-      }
-    }
-    return false;
+    if (!(document.body.textContent || "").includes("版本冲突")) return false;
+    const b = [...document.querySelectorAll("button")]
+      .find((x) => (x.textContent || "").trim() === "继续编辑本地");
+    if (!b) return false;
+    realClick(b);
+    try { b.click(); } catch (_) {}
+    setStatus("🔀 版本冲突：已选「继续编辑本地」");
+    return true;
   }
 
   // 「请选择内容检测方式」弹窗：返回应点击的按钮（默认仅基础检测）
