@@ -144,7 +144,7 @@ function numFromName(name) {
   return m ? parseInt(m[1], 10) : null;
 }
 function numFromText(text) {
-  const m = text.slice(0, 50).match(/第(\d+)章/);
+  const m = text.slice(0, 50).match(/第\s*(\d+)\s*章/);
   return m ? parseInt(m[1], 10) : null;
 }
 // 把一篇文档拆成「标题 + 正文」，并清理 Markdown 标记

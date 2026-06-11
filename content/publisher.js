@@ -172,8 +172,8 @@
     }
     const titleInput = findTitleInput();
     if (!titleInput) throw new Error("未找到标题输入框");
-    // 去掉"第N章"前缀（章节号已单独填入），兼容冒号/空格/顿号等分隔符
-    const pure = task.title.replace(/^第\d+章[\s：:、.\-]*/, "").trim() || task.title;
+    // 去掉"第N章"前缀（章节号已单独填入）。兼容"第 56 章"这种带空格的写法，及冒号/顿号等分隔符
+    const pure = task.title.replace(/^\s*第\s*\d+\s*章[\s：:、.．·\-]*/, "").trim() || task.title;
     await typeInto(titleInput, pure);
   }
 
@@ -559,7 +559,7 @@
   }
 
   function extractNumber(title) {
-    const m = (title || "").match(/第(\d+)章/);
+    const m = (title || "").match(/第\s*(\d+)\s*章/);
     return m ? parseInt(m[1], 10) : null;
   }
 

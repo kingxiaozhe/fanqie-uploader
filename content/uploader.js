@@ -296,14 +296,14 @@
       const titleEl = row.querySelector(".table-title");
       const title = titleEl?.textContent?.trim();
       if (!title) continue;
-      const m = title.match(/第(\d+)章/);
+      const m = title.match(/第\s*(\d+)\s*章/);
       out.push({ title, chapterNumber: m ? parseInt(m[1], 10) : null });
     }
     return out;
   }
 
   function sameTitle(a, b) {
-    const norm = (s) => (s || "").replace(/^第\d+章[：:]\s*/, "").trim();
+    const norm = (s) => (s || "").replace(/^\s*第\s*\d+\s*章[\s：:、.．·\-]*/, "").trim();
     const x = norm(a), y = norm(b);
     return !!x && (x === y || x.includes(y) || y.includes(x));
   }
