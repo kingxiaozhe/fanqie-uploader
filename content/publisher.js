@@ -27,7 +27,7 @@
     titleInput: ['input[placeholder="请输入标题"]', "input.serial-editor-input-hint-area", 'input[placeholder*="标题"]', 'input[name="title"]'],
     chapterNumberInput: [".serial-editor-title-left input", ".left-input input"],
     contentArea: ['.ProseMirror[contenteditable="true"]', ".ProseMirror", '[contenteditable="true"]', 'textarea[name="content"]'],
-    submitButton: ["button.auto-editor-next", "button.publish-button"],
+    submitButton: ['button[data-apm-action="core_chain_long_story_next_confirm"]', "button.auto-editor-next", "button.publish-button"],
     submitText: ["下一步", "发布", "提交"],
     modal: ".arco-modal-content, .arco-modal",
     modalPrimary: ".arco-modal-footer button.arco-btn-primary",
@@ -228,7 +228,7 @@
     // 优先专用 class，再按精确文本找，避免误点"发布设置/发布记录"等
     const clickSubmit = () => {
       const btn = query(SEL.submitButton) || findButtonByText(SEL.submitText);
-      if (btn) { btn.click(); return true; }
+      if (btn) { realClick(btn); return true; } // 番茄按钮需完整鼠标序列，.click() 点不动
       return false;
     };
     if (!clickSubmit()) throw new Error("未找到提交按钮");
@@ -254,7 +254,7 @@
         // ⓪ 内容检测方式弹窗：默认点「仅基础检测」(不限次)，避免烧光全面检测额度
         const detectBtn = findDetectionButton();
         if (detectBtn) {
-          detectBtn.click();
+          realClick(detectBtn);
           setStatus("🔍 内容检测：已选「" + (detectBtn.textContent?.trim()) + "」，等待…");
           return; // 点完等下一轮
         }
@@ -278,7 +278,7 @@
         const genericModal = document.querySelector(".arco-modal-content");
         if (genericModal && !publishDialog) {
           const confirm = document.querySelector(SEL.modalPrimary);
-          if (confirm) confirm.click();
+          if (confirm) realClick(confirm);
         }
 
         if (n >= 60) {
@@ -359,7 +359,7 @@
 
     // 打开"定时发布"开关（当前关闭时）
     const off = document.querySelector(SEL.scheduleSwitchOff);
-    if (off) { off.click(); await delay(800); }
+    if (off) { realClick(off); await delay(800); }
 
     // 找日期/时间输入框（按当前值的格式区分）
     const pickers = document.querySelectorAll(SEL.pickerInput);
@@ -470,7 +470,7 @@
   async function setImmediateInDialog() {
     // 若定时开关是开启状态，关掉它 = 立即发布
     const on = document.querySelector(SEL.scheduleSwitchOn);
-    if (on) { on.click(); await delay(400); }
+    if (on) { realClick(on); await delay(400); }
   }
 
   // 关掉可能打开的日期/时间下拉浮层：在弹窗标题处触发 mousedown，触发 Arco"点击外部关闭"
