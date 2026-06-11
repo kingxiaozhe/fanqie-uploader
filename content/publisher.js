@@ -326,11 +326,13 @@
           resolve(true);
           return;
         }
-        if (n >= 25) {
-          // 诊断：超时时弹窗是否还开着——开着=确认没真正提交；关了=提交了但没识别到成功
-          setStatus("⌛ 等结果超时（发布弹窗" + (dialogGone ? "已关闭" : "仍打开") + "）", "error");
+        if (n >= 40) {
+          // 超时前最后再确认一次：已跳回章节管理页 或 发布弹窗已消失 = 其实成功了
+          const ok2 = /\/main\/writer\/chapter-manage\/\d+/.test(location.href) ||
+            !document.querySelector(SEL.publishDialog);
+          setStatus(ok2 ? "✅ 超时兜底判定为成功" : "⌛ 等结果超时（发布弹窗仍打开）", ok2 ? "success" : "error");
           clearInterval(timer);
-          resolve(false);
+          resolve(ok2);
         }
       }, 800);
     });
