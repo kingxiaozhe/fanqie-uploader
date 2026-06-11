@@ -60,6 +60,7 @@ async function restoreSettings() {
     if (s.startDate) $("startDate").value = s.startDate;
     if (s.customStart) $("customStart").value = s.customStart;
     if (typeof s.autoRetry === "boolean") $("autoRetry").checked = s.autoRetry;
+    if (s.pace) $("pace").value = String(s.pace);
     if (s.detectionMode) $("fullDetection").checked = s.detectionMode === "full";
     if (s.useAI) $("useAI").value = s.useAI;
     // dryRun（试填模式）不恢复，每次默认关闭，避免下次静默不发布
@@ -92,6 +93,7 @@ function collectSettings() {
     customStart: $("customStart").value || null,       // 自定义首章时间(datetime-local)
     autoRetry: $("autoRetry").checked,
     maxRetries: 3,
+    pace: Number($("pace").value) || 1,                // 操作节奏倍率（>1 更慢更稳）
     detectionMode: $("fullDetection").checked ? "full" : "basic", // 内容检测方式
     useAI: $("useAI").value,                            // 是否使用AI声明: no | yes
     dryRun: $("dryRun").checked,                        // 试填模式：只填表不发布

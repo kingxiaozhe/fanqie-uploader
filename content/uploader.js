@@ -165,6 +165,7 @@
       return;
     }
 
+    await delay(800); // 开下一个发布页前稍候，节奏更稳（受"操作节奏"倍率影响）
     awaitingTaskId = task.id;
     chrome.runtime.sendMessage({
       type: "OPEN_PUBLISH_TAB",
@@ -172,6 +173,8 @@
     });
     armWatchdog(task.id); // 本章超时无响应则兜底，避免永久卡住
   }
+
+  function pace() { return session?.settings?.pace || 1; }
 
   // 看门狗：本章 CHAPTER_TIMEOUT 内没收到结果，按失败处理（onTaskFailed 内会先查重）
   function armWatchdog(taskId) {
@@ -194,7 +197,7 @@
     console.log("✅ 本章完成:", taskId);
     session.currentIndex += 1;
     await saveSession();
-    setTimeout(processNext, 1000);
+    setTimeout(processNext, 1000 * pace());
   }
 
   async function onTaskFailed(taskId, submitted) {
@@ -213,7 +216,7 @@
       setIndicator(`⏭️ 第 ${session.currentIndex + 1} 章已创建/已存在，跳过（防重复）`, "warning");
       session.currentIndex += 1;
       await saveSession();
-      setTimeout(processNext, 1000);
+      setTimeout(processNext, 1000 * pace());
       return;
     }
 
@@ -221,7 +224,7 @@
       session.retries[taskId] = used + 1;
       await saveSession();
       setIndicator(`🔁 第 ${session.currentIndex + 1} 章失败，重试 ${used + 1}/${s.maxRetries || 3}`, "warning");
-      setTimeout(processNext, 1500); // 不前进 index，重发当前章
+      setTimeout(processNext, 1500 * pace()); // 不前进 index，重发当前章
       return;
     }
 
@@ -230,7 +233,7 @@
     console.warn("❌ 本章最终失败，跳过:", taskId);
     session.currentIndex += 1;
     await saveSession();
-    setTimeout(processNext, 1000);
+    setTimeout(processNext, 1000 * pace());
   }
 
   // ---------- 发布时间计算 ----------
@@ -357,6 +360,6 @@
   }
 
   function delay(ms) {
-    return new Promise((r) => setTimeout(r, ms));
+    return new Promise((r) => setTimeout(r, ms * (session?.settings?.pace || 1)));
   }
 })();

@@ -64,6 +64,13 @@
       首章发布时间 <input type="datetime-local" id="customStart" />，后续每小时一章
     </div>
 
+    <label class="opt">操作节奏：
+      <select id="pace">
+        <option value="1">正常</option>
+        <option value="1.6" selected>慢一点（推荐，更稳）</option>
+        <option value="2.4">很慢</option>
+      </select>
+    </label>
     <label class="opt"><input type="checkbox" id="autoRetry" checked /> 失败自动重试（最多 3 次）</label>
     <label class="opt"><input type="checkbox" id="fullDetection" checked /> 发布用「全面检测」（每章 2 次额度；取消则仅基础检测）</label>
     <label class="opt">是否使用 AI（声明）：

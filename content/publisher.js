@@ -18,6 +18,7 @@
   let currentSettings = {};   // 本次会话的设置（dryRun / detectionMode 等）
   let dialogHandled = false;  // 发布设置对话框是否已处理（防重复）
   let submitted = false;      // 是否已点"下一步"创建了章节（失败后据此决定能否重试，防重复发布）
+  let paceFactor = 1;         // 操作节奏倍率（>1 更慢，降低出错率），来自设置
   let statusEl = null;        // 页面顶部状态横幅
   const DEBUG = false;        // 调试模式：true=失败保留标签页不重试；正式批量请保持 false
 
@@ -114,9 +115,10 @@
     console.log("📝 开始填充章节:", task.title, "| 发布时间:", task.publishTime || "now");
 
     try {
-      // 读取本次会话设置（dryRun / detectionMode 等）
+      // 读取本次会话设置（dryRun / detectionMode / pace 等）
       const { upload_session } = await chrome.storage.local.get("upload_session");
       currentSettings = upload_session?.settings || {};
+      paceFactor = currentSettings.pace || 1; // 操作节奏：放慢所有 delay
 
       setStatus("⏳ 等待编辑器加载…");
       await waitForForm();
@@ -619,6 +621,6 @@
   }
 
   function delay(ms) {
-    return new Promise((r) => setTimeout(r, ms));
+    return new Promise((r) => setTimeout(r, ms * paceFactor));
   }
 })();
