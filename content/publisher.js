@@ -307,6 +307,13 @@
           resolve(false);
           return;
         }
+
+        // 确认发布后可能弹"二次确认"小窗（超7天/夜间发文等）——点掉它的主按钮继续
+        for (const m of document.querySelectorAll(".arco-modal")) {
+          if (m.classList.contains("publish-confirm-container-new")) continue;
+          const p = m.querySelector("button.arco-btn-primary");
+          if (p) { realClick(p); setStatus("↪️ 处理二次确认弹窗"); break; }
+        }
         if (onManage || successToast || (dialogGone && n >= 2)) {
           clearInterval(timer);
           resolve(true);
@@ -496,9 +503,13 @@
       return t.includes("确认发布") || t === "确定" || t === "发布";
     }) || primaries[0];
     if (!btn) throw new Error("未找到『确认发布』按钮");
-    realClick(btn); // 与日历/时间一致用完整鼠标序列
+    // 三管齐下确保触发：完整鼠标序列 + 点内层 span + 原生 click
+    realClick(btn);
+    const span = btn.querySelector("span");
+    if (span) realClick(span);
+    try { btn.click(); } catch (_) {}
     setStatus("✅ 已点击确认发布，等待跳转…");
-    await delay(1500);
+    await delay(1200);
   }
 
   function pad(n) { return String(n).padStart(2, "0"); }
