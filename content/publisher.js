@@ -40,8 +40,10 @@
     calHeaderIcon: ".arco-picker-header-icon",
     calCell: ".arco-picker-cell.arco-picker-cell-in-view:not(.arco-picker-cell-disabled)",
     calCellValue: ".arco-picker-date-value",
-    timeCol: ".arco-timepicker-column",          // 时间面板的"时/分"列
+    timePanel: ".arco-timepicker-container",      // 时间面板容器
+    timeCol: ".arco-timepicker-list",             // 时间面板的"时/分"列（两列）
     timeCell: ".arco-timepicker-cell",            // 时间面板里的每个数字格
+    timeCellInner: ".arco-timepicker-cell-inner", // 数字格里的文本
     successToast: ".arco-message-success, .arco-notification-success",
     errorToast: ".arco-message-error, .arco-notification-error",
     radio: ".arco-radio",
@@ -428,24 +430,30 @@
   // 模拟点击 Arco 时间选择器选时:分（多更错开时刻用）。返回是否成功。
   async function pickArcoTime(input, target) {
     realClick(input.closest(".arco-picker") || input);
-    const ok = await waitFor(() => document.querySelector(SEL.timeCol), { timeout: 2500 });
+    const ok = await waitFor(() => document.querySelector(SEL.timePanel), { timeout: 2500 });
     if (!ok) { console.warn("⚠️ 时间面板未出现"); return false; }
-    const cols = document.querySelectorAll(SEL.timeCol); // 通常 [时, 分]（可能含秒）
-    const want = [target.getHours(), target.getMinutes()];
+
+    const cols = document.querySelectorAll(SEL.timeCol); // [时, 分]
+    const want = [pad(target.getHours()), pad(target.getMinutes())];
     let done = 0;
     for (let c = 0; c < Math.min(2, cols.length); c++) {
-      const target2 = String(want[c]).padStart(2, "0");
       for (const cell of cols[c].querySelectorAll(SEL.timeCell)) {
-        const t = (cell.textContent || "").trim();
-        if (t === target2 || t === String(want[c])) {
-          realClick(cell);
-          await delay(250);
+        const inner = cell.querySelector(SEL.timeCellInner) || cell;
+        if ((inner.textContent || "").trim() === want[c]) {
+          cell.scrollIntoView({ block: "center" });
+          await delay(100);
+          realClick(inner);
+          await delay(200);
           done++;
           break;
         }
       }
     }
-    return done >= 1;
+    // 点面板底部「确定」应用并关闭（关键：不点确定时间不生效、浮层也不关）
+    const confirm = [...document.querySelectorAll(SEL.timePanel + " button")]
+      .find((b) => (b.textContent || "").trim() === "确定");
+    if (confirm) { realClick(confirm); await delay(300); }
+    return done >= 2;
   }
 
   // 解析日历头部 "2026年6月" / "2026-06" / "2026 / 06" → year*12 + (month-1)
