@@ -68,8 +68,16 @@
     if ((session.settings?.publishMode) === "auto") {
       session.scheduleStartDate = computeScheduleStartDate();
       console.log("📅 定时起始日期:", session.scheduleStartDate);
-      await saveSession();
     }
+
+    // ③ 一次性按"本次待发章节的序号"算好每章发布时间（跳过已上传的，序号才不会错位）
+    let ord = 0;
+    for (const t of session.tasks) {
+      if (t.status === "uploaded") continue;
+      t.publishTime = computePublishTime(ord);
+      ord++;
+    }
+    await saveSession();
 
     const pending = session.tasks.filter((t) => t.status !== "uploaded").length;
     setIndicator(`🚀 准备上传 ${pending} 章（共 ${session.tasks.length}）`, "info");
@@ -131,7 +139,7 @@
     }
 
     const task = session.tasks[i];
-    task.publishTime = computePublishTime(i); // 按发布模式算出本章时间
+    // publishTime 已在 startUpload 里按序号一次性算好（见 ③），这里直接用
     setIndicator(`📝 第 ${i + 1}/${session.tasks.length} 章：${task.title}`, "info");
     await saveSession();
 

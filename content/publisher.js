@@ -214,8 +214,9 @@
 
   // ---------- 提交 + 处理弹窗 + 判断成功 ----------
   async function submitAndConfirm() {
-    const btn = findButtonByText(["下一步", "发布", "提交"]) ||
-      query(["button.publish-button", 'button[type="submit"]']);
+    // 优先专用 class，再按精确文本找，避免误点"发布设置/发布记录"等
+    const btn = query(["button.auto-editor-next", "button.publish-button"]) ||
+      findButtonByText(["下一步", "发布", "提交"]);
     if (!btn) throw new Error("未找到提交按钮");
     btn.click();
     console.log("🚀 已点击提交");
@@ -432,8 +433,13 @@
 
   async function clickConfirmPublish() {
     await delay(600);
-    const span = document.querySelector(".arco-modal-footer button.arco-btn-primary span");
-    const btn = span?.parentElement || query([".arco-modal-footer button.arco-btn-primary"]);
+    // 限定在发布设置弹窗内找，并校验按钮文字，避免误点别的弹窗按钮
+    const dialog = document.querySelector(".arco-modal.publish-confirm-container-new") || document;
+    const primaries = [...dialog.querySelectorAll(".arco-modal-footer button.arco-btn-primary, button.arco-btn-primary")];
+    let btn = primaries.find((b) => {
+      const t = (b.textContent || "").trim();
+      return t.includes("确认发布") || t === "确定" || t === "发布";
+    }) || primaries[0];
     if (!btn) throw new Error("未找到『确认发布』按钮");
     btn.click();
     setStatus("✅ 已点击确认发布，等待跳转…");
@@ -441,17 +447,6 @@
   }
 
   function pad(n) { return String(n).padStart(2, "0"); }
-
-  // 试填模式横幅：醒目提示"已填好但未发布"
-  function showDryRunBanner() {
-    const bar = document.createElement("div");
-    bar.textContent = "🧪 试填模式：标题与正文已自动填入，未点击发布。请人工检查无误后手动操作。";
-    bar.style.cssText = `
-      position:fixed;top:0;left:0;right:0;z-index:999999;
-      background:#f39c12;color:#fff;padding:12px 16px;text-align:center;
-      font:600 14px/1.4 system-ui;box-shadow:0 2px 8px rgba(0,0,0,.3);`;
-    document.body.appendChild(bar);
-  }
 
   // ---------- 工具 ----------
   function query(selectors) {
@@ -520,9 +515,14 @@
   }
 
   function findButtonByText(texts) {
-    for (const btn of document.querySelectorAll("button")) {
-      const t = btn.textContent || "";
-      if (texts.some((x) => t.includes(x))) return btn;
+    const btns = [...document.querySelectorAll("button")];
+    // 先按 texts 顺序精确匹配（"下一步" 优先于 "发布"），再退化到包含匹配
+    for (const x of texts) {
+      const exact = btns.find((b) => (b.textContent || "").trim() === x);
+      if (exact) return exact;
+    }
+    for (const b of btns) {
+      if (texts.some((x) => (b.textContent || "").includes(x))) return b;
     }
     return null;
   }
