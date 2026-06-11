@@ -42,9 +42,9 @@ function collectSettings() {
 }
 
 async function onFolderPicked(e) {
-  const files = [...e.target.files].filter((f) => f.name.toLowerCase().endsWith(".txt"));
+  const files = [...e.target.files].filter((f) => /\.(txt|md|markdown)$/i.test(f.name));
   if (!files.length) {
-    alert("该文件夹下没有 .txt 文件");
+    alert("该文件夹下没有 .txt / .md 文件");
     return;
   }
   // 文件夹名（webkitRelativePath 形如 "我的小说/第1章.txt"）
@@ -56,9 +56,9 @@ async function onFolderPicked(e) {
 
   tasks = [];
   for (const f of files) {
-    const content = (await f.text()).trim();
-    const chapterNumber = numFromName(f.name) || numFromText(content);
-    const title = titleFrom(f.name, content, chapterNumber);
+    const raw = (await f.text()).replace(/\r\n/g, "\n").trim();
+    const { title, content } = splitTitleBody(raw, f.name);
+    const chapterNumber = numFromName(f.name) || numFromText(raw);
     tasks.push({
       id: cryptoId(),
       fileName: f.name,
@@ -127,11 +127,42 @@ function numFromText(text) {
   const m = text.slice(0, 50).match(/第(\d+)章/);
   return m ? parseInt(m[1], 10) : null;
 }
-function titleFrom(fileName, content, num) {
-  // 优先用正文首行作标题，否则用去掉扩展名的文件名
-  const firstLine = content.split("\n")[0]?.trim() || "";
-  if (firstLine && firstLine.length <= 40) return firstLine;
-  return fileName.replace(/\.txt$/i, "");
+// 把一篇文档拆成「标题 + 正文」，并清理 Markdown 标记
+// 规则：首个非空行当标题（清掉 # / ** 等）；其余为正文。
+//      若首行太长(>40字)更像正文，则用文件名当标题、整篇当正文。
+function splitTitleBody(raw, fileName) {
+  const baseName = fileName.replace(/\.(txt|md|markdown)$/i, "");
+  const lines = raw.split("\n");
+  const idx = lines.findIndex((l) => l.trim());
+  if (idx === -1) return { title: baseName, content: "" };
+
+  const firstLine = cleanInline(lines[idx]);
+  if (firstLine.length > 40) {
+    return { title: baseName, content: stripMd(raw) };
+  }
+  const body = lines.slice(idx + 1).join("\n").trim();
+  return { title: firstLine || baseName, content: stripMd(body) };
+}
+
+// 清理单行里的 Markdown 标记（标题井号、引用、加粗、斜体）
+function cleanInline(line) {
+  return (line || "")
+    .trim()
+    .replace(/^#{1,6}\s*/, "")        // # 标题
+    .replace(/^>\s?/, "")             // > 引用
+    .replace(/\*\*(.+?)\*\*/g, "$1")  // **加粗**
+    .replace(/\*(.+?)\*/g, "$1")      // *斜体*
+    .replace(/`/g, "")                // 行内代码
+    .trim();
+}
+
+// 逐行清理正文里的 Markdown 标记，保留段落结构
+function stripMd(text) {
+  return text
+    .split("\n")
+    .map((l) => cleanInline(l))
+    .join("\n")
+    .trim();
 }
 function cryptoId() {
   return Math.random().toString(36).slice(2, 10);
