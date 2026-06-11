@@ -58,7 +58,9 @@
       } else if (attempt < 6) {
         setTimeout(() => requestTaskWithRetry(attempt + 1), 500); // 任务可能还没存好，重试
       } else {
-        console.warn("⚠️ 未拉取到章节任务（可能不是自动上传打开的页面）");
+        // 正常情况：本页不是自动上传打开的（如草稿创建后重载的二次注入、或人工手动编辑页）
+        // 此时 publisher 不做任何事，静默即可，避免在 Errors 面板里显示成"错误"
+        console.log("ℹ️ 本页无待发任务，发布器待命（非自动上传页面，正常）");
       }
     });
   }
