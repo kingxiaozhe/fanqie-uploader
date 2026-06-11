@@ -243,9 +243,8 @@
           dialogHandled = true;
           clearInterval(timer);
           try {
-            await handlePublishDialog();
-            // 处理完继续轮询等待跳转
-            resumePolling(resolve);
+            await handlePublishDialog();        // 设 AI/定时 + 点确认发布
+            resolve(await waitForPublishResult()); // 判断是否真的发布成功
           } catch (e) {
             console.error("❌ 处理发布对话框失败:", e);
             resolve(false);
@@ -268,19 +267,32 @@
     });
   }
 
-  // 处理完发布对话框后，继续轮询等待页面跳转
-  function resumePolling(resolve) {
-    let n = 0;
-    const timer = setInterval(() => {
-      n++;
-      if (/\/main\/writer\/chapter-manage\/\d+/.test(location.href)) {
-        clearInterval(timer);
-        resolve(true);
-      } else if (n >= 30) {
-        clearInterval(timer);
-        resolve(false);
-      }
-    }, 1000);
+  // 点完「确认发布」后判断结果：发布弹窗消失 / 出现成功提示 / 跳回章节管理页 = 成功；
+  // 出现错误提示 = 失败。（番茄发定时章节不会跳页，所以不能只看 URL）
+  function waitForPublishResult() {
+    return new Promise((resolve) => {
+      let n = 0;
+      const timer = setInterval(() => {
+        n++;
+        const onManage = /\/main\/writer\/chapter-manage\/\d+/.test(location.href);
+        const successToast = document.querySelector(".arco-message-success, .arco-notification-success");
+        const errToast = document.querySelector(".arco-message-error, .arco-notification-error");
+        const dialogGone = !document.querySelector(".arco-modal.publish-confirm-container-new");
+
+        if (errToast && (errToast.textContent || "").trim().length > 3) {
+          setStatus("❌ 发布报错：" + errToast.textContent.trim(), "error");
+          clearInterval(timer);
+          resolve(false);
+          return;
+        }
+        if (onManage || successToast || (dialogGone && n >= 2)) {
+          clearInterval(timer);
+          resolve(true);
+          return;
+        }
+        if (n >= 25) { clearInterval(timer); resolve(false); }
+      }, 800);
+    });
   }
 
   // ---------- 发布设置对话框：设定时/立即 + 点确认发布 ----------
@@ -323,26 +335,44 @@
     const off = document.querySelector('.arco-switch[aria-checked="false"]');
     if (off) { off.click(); await delay(800); }
 
-    // 填日期/时间选择器（番茄用 .arco-picker-start-time，按内容区分日期框/时间框）
-    const pickers = document.querySelectorAll(".arco-picker-start-time, .arco-picker input");
+    // 找日期/时间选择器输入框（按当前值的格式区分）
+    const pickers = document.querySelectorAll(
+      ".arco-picker input, .arco-timepicker input, input.arco-picker-input, .arco-picker-start-time"
+    );
     let dateInput = null, timeInput = null;
     for (const el of pickers) {
-      const v = el.value || "";
-      if (/\d{4}-\d{2}/.test(v)) dateInput = el;
-      else if (/\d{1,2}:\d{2}/.test(v)) timeInput = el;
+      const v = el.value || el.getAttribute("value") || "";
+      if (/\d{4}-\d{2}-\d{2}/.test(v)) dateInput = el;
+      else if (/^\d{1,2}:\d{2}/.test(v)) timeInput = el;
     }
     if (dateInput) await setPicker(dateInput, date);
     if (timeInput) await setPicker(timeInput, time);
-    if (!dateInput && !timeInput) console.warn("⚠️ 未找到日期/时间输入框，定时可能未生效");
+
+    const mark = `日期${dateInput ? "✓" : "✗"} 时间${timeInput ? "✓" : "✗"}`;
+    if (!dateInput && !timeInput) {
+      setStatus("⚠️ 没找到日期/时间框，定时可能用了番茄默认值（" + mark + "）", "error");
+    } else {
+      setStatus("⏰ 已写入定时 " + date + " " + time + "（" + mark + "，请核对是否生效）");
+    }
   }
 
+  // Arco 选择器：直接写 value 常不生效，模拟「聚焦→清空→输入→回车」提交
   async function setPicker(el, value) {
     el.focus();
-    setNativeValue(el, value);
+    el.click();
+    await delay(300);
+    setNativeValue(el, "");
     el.dispatchEvent(new Event("input", { bubbles: true }));
+    setNativeValue(el, value);
+    el.dispatchEvent(new InputEvent("input", { bubbles: true, data: value }));
     el.dispatchEvent(new Event("change", { bubbles: true }));
+    await delay(300);
+    for (const type of ["keydown", "keyup"]) {
+      el.dispatchEvent(new KeyboardEvent(type, { key: "Enter", code: "Enter", keyCode: 13, which: 13, bubbles: true }));
+    }
+    await delay(300);
     el.blur();
-    await delay(400);
+    await delay(300);
   }
 
   async function setImmediateInDialog() {
