@@ -51,6 +51,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           sendResponse({ success: true });
           break;
 
+        // 内容脚本转发的日志，集中打印到后台控制台（调试用）
+        case "LOG":
+          console.log(`[${msg.src || "cs"}]`, msg.text);
+          sendResponse({ success: true });
+          break;
+
         case "NOTIFY":
           chrome.notifications.create({
             type: "basic",

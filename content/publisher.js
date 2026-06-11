@@ -17,6 +17,23 @@
   let currentTask = null;     // 当前正在发布的章节（含 publishTime）
   let currentSettings = {};   // 本次会话的设置（dryRun / detectionMode 等）
   let dialogHandled = false;  // 发布设置对话框是否已处理（防重复）
+  let statusEl = null;        // 页面顶部状态横幅
+  const DEBUG = true;         // 调试模式：失败时保留标签页+红色横幅，不自动关闭/重试
+
+  // 顶部状态横幅 + 转发日志到后台（调试用，单看一处即可）
+  function setStatus(text, level = "info") {
+    console.log("[publisher]", text);
+    try { chrome.runtime.sendMessage({ type: "LOG", src: "publisher", text }); } catch (_) {}
+    if (!statusEl) {
+      statusEl = document.createElement("div");
+      statusEl.style.cssText =
+        "position:fixed;top:0;left:0;right:0;z-index:999999;padding:10px 16px;" +
+        "text-align:center;font:600 14px/1.4 system-ui;color:#fff;box-shadow:0 2px 8px rgba(0,0,0,.3);";
+      document.body.appendChild(statusEl);
+    }
+    statusEl.style.background = { info: "#3498db", success: "#27ae60", error: "#e74c3c" }[level] || "#3498db";
+    statusEl.textContent = text;
+  }
 
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (msg.type === "FILL_CHAPTER") {
@@ -36,7 +53,7 @@
     chrome.runtime.sendMessage({ type: "REQUEST_TASK" }, (resp) => {
       if (chrome.runtime.lastError) return;
       if (resp && resp.success && resp.task) {
-        console.log("📥 已拉取章节任务:", resp.task.title);
+        setStatus("📥 已拉取章节：" + resp.task.title);
         fillChapter({ task: resp.task, sessionId: resp.sessionId });
       } else if (attempt < 6) {
         setTimeout(() => requestTaskWithRetry(attempt + 1), 500); // 任务可能还没存好，重试
@@ -58,27 +75,35 @@
     currentSettings = upload_session?.settings || {};
 
     try {
+      setStatus("⏳ 等待编辑器加载…");
       await waitForForm();
+      setStatus("✏️ 填写章节号 / 标题…");
       await fillTitle(task);
+      setStatus("📄 填写正文…");
       await fillContent(task);
 
       // 🧪 试填模式：填完就停，不提交、不关页，让用户检查
       if (currentSettings.dryRun) {
-        showDryRunBanner();
-        console.log("🧪 试填模式：已填充标题/正文，未点击发布。请人工检查页面。");
+        setStatus("🧪 试填模式：已填好，未点发布，请人工检查", "success");
         processing = false;
         return; // 不发送 TASK_DONE，调度器会停在这一章（符合预期）
       }
 
+      setStatus("🚀 点击下一步 / 发布，处理弹窗…");
       const ok = await submitAndConfirm();
-      if (!ok) throw new Error("未能确认发布成功");
+      if (!ok) throw new Error("未能确认发布成功（超时或未跳转回章节管理页）");
 
+      setStatus("🎉 发布成功，即将跳转", "success");
       chrome.runtime.sendMessage({ type: "TASK_DONE", taskId: task.id, sessionId });
       setTimeout(() => chrome.runtime.sendMessage({ type: "CLOSE_TAB" }), 800);
     } catch (e) {
       console.error("❌ 发布失败:", e);
-      chrome.runtime.sendMessage({ type: "TASK_FAILED", taskId: task.id, sessionId });
-      setTimeout(() => chrome.runtime.sendMessage({ type: "CLOSE_TAB" }), 1500);
+      setStatus("❌ 卡住了：" + (e.message || e) + "（调试模式，页面保留）", "error");
+      if (!DEBUG) {
+        chrome.runtime.sendMessage({ type: "TASK_FAILED", taskId: task.id, sessionId });
+        setTimeout(() => chrome.runtime.sendMessage({ type: "CLOSE_TAB" }), 1500);
+      }
+      // DEBUG=true：不关页、不上报失败，停在原地让你看横幅卡在哪一步
     } finally {
       processing = false;
     }
@@ -208,7 +233,7 @@
         const detectBtn = findDetectionButton();
         if (detectBtn) {
           detectBtn.click();
-          console.log("✅ 内容检测方式：已选", detectBtn.textContent?.trim());
+          setStatus("🔍 内容检测：已选「" + (detectBtn.textContent?.trim()) + "」，等待…");
           return; // 点完等下一轮
         }
 
@@ -260,6 +285,7 @@
 
   // ---------- 发布设置对话框：设定时/立即 + 点确认发布 ----------
   async function handlePublishDialog() {
+    setStatus("⚙️ 发布设置弹窗：处理 AI / 定时…");
     await delay(800);
     await setAIChoice();                       // 先处理「是否使用AI」
     const pt = currentTask?.publishTime;
@@ -280,7 +306,7 @@
         (input || r).click();
         r.click();
         await delay(300);
-        console.log("🤖 是否使用AI：已选", want);
+        setStatus("🤖 是否使用AI：已选「" + want + "」");
         return;
       }
     }
@@ -291,7 +317,7 @@
     const d = new Date(iso);
     const date = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
     const time = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-    console.log("⏰ 定时发布:", date, time);
+    setStatus("⏰ 设置定时发布：" + date + " " + time);
 
     // 打开"定时发布"开关（当前关闭时）
     const off = document.querySelector('.arco-switch[aria-checked="false"]');
@@ -331,7 +357,7 @@
     const btn = span?.parentElement || query([".arco-modal-footer button.arco-btn-primary"]);
     if (!btn) throw new Error("未找到『确认发布』按钮");
     btn.click();
-    console.log("✅ 已点击确认发布");
+    setStatus("✅ 已点击确认发布，等待跳转…");
     await delay(1500);
   }
 
