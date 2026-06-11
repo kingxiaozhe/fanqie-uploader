@@ -217,10 +217,13 @@
   // ---------- 提交 + 处理弹窗 + 判断成功 ----------
   async function submitAndConfirm() {
     // 优先专用 class，再按精确文本找，避免误点"发布设置/发布记录"等
-    const btn = query(["button.auto-editor-next", "button.publish-button"]) ||
-      findButtonByText(["下一步", "发布", "提交"]);
-    if (!btn) throw new Error("未找到提交按钮");
-    btn.click();
+    const clickSubmit = () => {
+      const btn = query(["button.auto-editor-next", "button.publish-button"]) ||
+        findButtonByText(["下一步", "发布", "提交"]);
+      if (btn) { btn.click(); return true; }
+      return false;
+    };
+    if (!clickSubmit()) throw new Error("未找到提交按钮");
     console.log("🚀 已点击提交");
 
     return new Promise((resolve) => {
@@ -234,9 +237,11 @@
           return;
         }
 
-        // 草稿提示 / 版本冲突——先处理掉
-        if (dismissDraftPrompt()) return;
-        if (dismissVersionConflict()) return;
+        // 草稿提示 / 版本冲突拦截了"下一步"——清掉后重新点一次"下一步"继续
+        if (dismissDraftPrompt() || dismissVersionConflict()) {
+          setTimeout(clickSubmit, 700);
+          return;
+        }
 
         // ⓪ 内容检测方式弹窗：默认点「仅基础检测」(不限次)，避免烧光全面检测额度
         const detectBtn = findDetectionButton();
@@ -459,15 +464,16 @@
     return null;
   }
 
-  // 「有刚刚更新的草稿，是否继续编辑？」提示：点「放弃」(丢弃旧草稿，用我们填的新内容)
+  // 「有刚刚更新的草稿，是否继续编辑？」提示：点「继续编辑」
+  // ⚠️ 必须点继续编辑——点"放弃"会把我们刚填好的标题/正文一起清空（正文字数变 0）。
   function dismissDraftPrompt() {
     for (const m of document.querySelectorAll(".arco-modal-content, .arco-modal")) {
       const t = m.textContent || "";
       if (!t.includes("草稿") || !t.includes("继续编辑")) continue;
       for (const b of m.querySelectorAll("button")) {
-        if ((b.textContent || "").trim() === "放弃") {
-          b.click();
-          setStatus("🗑️ 检测到草稿提示，已选「放弃」");
+        if ((b.textContent || "").trim() === "继续编辑") {
+          realClick(b);
+          setStatus("📝 草稿提示 → 继续编辑（保留已填内容）");
           return true;
         }
       }
@@ -481,7 +487,7 @@
       if (!(m.textContent || "").includes("版本冲突")) continue;
       for (const b of m.querySelectorAll("button")) {
         if ((b.textContent || "").trim() === "继续编辑本地") {
-          b.click();
+          realClick(b);
           setStatus("🔀 版本冲突：已选「继续编辑本地」");
           return true;
         }
