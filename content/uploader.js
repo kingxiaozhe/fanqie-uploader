@@ -10,9 +10,12 @@
 (function () {
   "use strict";
 
-  let session = null;   // { sessionId, tasks, settings, currentIndex, retries, status }
-  let indicator = null; // 右上角状态浮标
+  let session = null;     // { sessionId, tasks, settings, currentIndex, retries, status }
+  let indicator = null;   // 右上角状态浮标
   let busy = false;
+  let awaitingTaskId = null; // 当前正在等待结果的章节 id（防重复推进 + 看门狗用）
+  let watchdog = null;       // 看门狗计时器：本章超时无响应则按失败处理
+  const CHAPTER_TIMEOUT = 180000; // 单章最长等待 3 分钟
 
   init();
 
@@ -162,14 +165,30 @@
       return;
     }
 
+    awaitingTaskId = task.id;
     chrome.runtime.sendMessage({
       type: "OPEN_PUBLISH_TAB",
       data: { url: publishUrl, task, sessionId: session.sessionId },
     });
+    armWatchdog(task.id); // 本章超时无响应则兜底，避免永久卡住
   }
 
+  // 看门狗：本章 CHAPTER_TIMEOUT 内没收到结果，按失败处理（onTaskFailed 内会先查重）
+  function armWatchdog(taskId) {
+    clearWatchdog();
+    watchdog = setTimeout(() => {
+      if (taskId !== awaitingTaskId) return;
+      console.warn("⏰ 本章超时无响应，按失败处理:", taskId);
+      setIndicator("⏰ 本章超时，自动处理", "warning");
+      onTaskFailed(taskId);
+    }, CHAPTER_TIMEOUT);
+  }
+  function clearWatchdog() { if (watchdog) { clearTimeout(watchdog); watchdog = null; } }
+
   async function onTaskDone(taskId) {
-    if (!session) return;
+    if (!session || taskId !== awaitingTaskId) return; // 忽略过期/重复消息
+    clearWatchdog();
+    awaitingTaskId = null;
     const t = session.tasks.find((x) => x.id === taskId);
     if (t) t.status = "uploaded";
     console.log("✅ 本章完成:", taskId);
@@ -179,7 +198,9 @@
   }
 
   async function onTaskFailed(taskId) {
-    if (!session) return;
+    if (!session || taskId !== awaitingTaskId) return; // 忽略过期/重复消息
+    clearWatchdog();
+    awaitingTaskId = null;
     const s = session.settings || {};
     const used = session.retries[taskId] || 0;
     const task = session.tasks.find((x) => x.id === taskId);

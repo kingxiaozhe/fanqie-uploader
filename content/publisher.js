@@ -109,11 +109,11 @@
     dialogHandled = false;
     console.log("📝 开始填充章节:", task.title, "| 发布时间:", task.publishTime || "now");
 
-    // 读取本次会话设置（dryRun / detectionMode 等）
-    const { upload_session } = await chrome.storage.local.get("upload_session");
-    currentSettings = upload_session?.settings || {};
-
     try {
+      // 读取本次会话设置（dryRun / detectionMode 等）
+      const { upload_session } = await chrome.storage.local.get("upload_session");
+      currentSettings = upload_session?.settings || {};
+
       setStatus("⏳ 等待编辑器加载…");
       await waitForForm();
       setStatus("✏️ 填写章节号 / 标题…");
