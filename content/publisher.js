@@ -115,7 +115,8 @@
       let n = 0;
       const timer = setInterval(() => {
         n++;
-        dismissDraftPrompt(); // 草稿提示可能在页面加载时弹出，先点掉「放弃」
+        dismissDraftPrompt();      // 草稿提示 → 放弃
+        dismissVersionConflict();  // 版本冲突 → 继续编辑本地
         if (findTitleInput() && findContentArea()) {
           clearInterval(timer);
           resolve();
@@ -230,8 +231,9 @@
           return;
         }
 
-        // 草稿提示（有刚刚更新的草稿）——点「放弃」
+        // 草稿提示 / 版本冲突——先处理掉
         if (dismissDraftPrompt()) return;
+        if (dismissVersionConflict()) return;
 
         // ⓪ 内容检测方式弹窗：默认点「仅基础检测」(不限次)，避免烧光全面检测额度
         const detectBtn = findDetectionButton();
@@ -426,6 +428,21 @@
         if ((b.textContent || "").trim() === "放弃") {
           b.click();
           setStatus("🗑️ 检测到草稿提示，已选「放弃」");
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  // 「版本冲突提示」：点「继续编辑本地」(保留我们刚填的内容，而不是云端旧版本)
+  function dismissVersionConflict() {
+    for (const m of document.querySelectorAll(".arco-modal-content, .arco-modal")) {
+      if (!(m.textContent || "").includes("版本冲突")) continue;
+      for (const b of m.querySelectorAll("button")) {
+        if ((b.textContent || "").trim() === "继续编辑本地") {
+          b.click();
+          setStatus("🔀 版本冲突：已选「继续编辑本地」");
           return true;
         }
       }
