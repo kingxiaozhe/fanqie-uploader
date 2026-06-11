@@ -38,6 +38,7 @@ function collectSettings() {
     autoRetry: $("autoRetry").checked,
     maxRetries: 3,
     detectionMode: $("fullDetection").checked ? "full" : "basic", // 内容检测方式
+    useAI: $("useAI").value,                            // 是否使用AI声明: no | yes
     dryRun: $("dryRun").checked,                        // 试填模式：只填表不发布
   };
 }

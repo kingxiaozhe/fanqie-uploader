@@ -244,10 +244,30 @@
   // ---------- 发布设置对话框：设定时/立即 + 点确认发布 ----------
   async function handlePublishDialog() {
     await delay(800);
+    await setAIChoice();                       // 先处理「是否使用AI」
     const pt = currentTask?.publishTime;
     if (pt && pt !== "now") await setScheduledInDialog(pt);
     else await setImmediateInDialog();
     await clickConfirmPublish();
+  }
+
+  // 设置「是否使用AI」单选（默认否）
+  async function setAIChoice() {
+    const want = currentSettings.useAI === "yes" ? "是" : "否";
+    const dialog = document.querySelector(".arco-modal.publish-confirm-container-new") || document;
+    // 只在含「是否使用AI」字样的那一行附近找单选项
+    const radios = dialog.querySelectorAll(".arco-radio");
+    for (const r of radios) {
+      if ((r.textContent || "").trim() === want) {
+        const input = r.querySelector('input[type="radio"]');
+        (input || r).click();
+        r.click();
+        await delay(300);
+        console.log("🤖 是否使用AI：已选", want);
+        return;
+      }
+    }
+    console.warn("⚠️ 未找到『是否使用AI』选项，跳过");
   }
 
   async function setScheduledInDialog(iso) {
