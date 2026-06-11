@@ -37,6 +37,7 @@ function collectSettings() {
     customStart: $("customStart").value || null,       // 自定义首章时间(datetime-local)
     autoRetry: $("autoRetry").checked,
     maxRetries: 3,
+    dryRun: $("dryRun").checked,                        // 试填模式：只填表不发布
   };
 }
 

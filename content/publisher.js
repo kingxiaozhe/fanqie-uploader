@@ -39,6 +39,16 @@
       await waitForForm();
       await fillTitle(task);
       await fillContent(task);
+
+      // 🧪 试填模式：填完就停，不提交、不关页，让用户检查
+      const { upload_session } = await chrome.storage.local.get("upload_session");
+      if (upload_session?.settings?.dryRun) {
+        showDryRunBanner();
+        console.log("🧪 试填模式：已填充标题/正文，未点击发布。请人工检查页面。");
+        processing = false;
+        return; // 不发送 TASK_DONE，调度器会停在这一章（符合预期）
+      }
+
       const ok = await submitAndConfirm();
       if (!ok) throw new Error("未能确认发布成功");
 
@@ -277,6 +287,17 @@
   }
 
   function pad(n) { return String(n).padStart(2, "0"); }
+
+  // 试填模式横幅：醒目提示"已填好但未发布"
+  function showDryRunBanner() {
+    const bar = document.createElement("div");
+    bar.textContent = "🧪 试填模式：标题与正文已自动填入，未点击发布。请人工检查无误后手动操作。";
+    bar.style.cssText = `
+      position:fixed;top:0;left:0;right:0;z-index:999999;
+      background:#f39c12;color:#fff;padding:12px 16px;text-align:center;
+      font:600 14px/1.4 system-ui;box-shadow:0 2px 8px rgba(0,0,0,.3);`;
+    document.body.appendChild(bar);
+  }
 
   // ---------- 工具 ----------
   function query(selectors) {
