@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "番茄小说批量上传器（脚手架）",
+  "version": "0.1.0",
+  "description": "选择本地章节文件夹，自动批量发布到番茄小说作者后台。纯手写 MV3 脚手架。",
+  "permissions": ["storage", "tabs", "notifications"],
+  "host_permissions": ["https://fanqienovel.com/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "番茄上传器"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://fanqienovel.com/main/writer/*"
+      ],
+      "js": ["content/uploader.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://fanqienovel.com/main/writer/*/publish*"
+      ],
+      "js": ["content/publisher.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

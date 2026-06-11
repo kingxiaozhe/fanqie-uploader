@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    :root { color-scheme: light dark; }
+    body {
+      width: 360px; margin: 0; padding: 16px;
+      font: 14px/1.5 system-ui, sans-serif;
+    }
+    h1 { font-size: 16px; margin: 0 0 4px; }
+    .sub { color: #888; font-size: 12px; margin-bottom: 12px; }
+    button {
+      font: inherit; padding: 8px 14px; border-radius: 8px; cursor: pointer;
+      border: 1px solid #3498db; background: #3498db; color: #fff;
+    }
+    button.ghost { background: transparent; color: #3498db; }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    .row { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
+    #list { max-height: 280px; overflow: auto; border: 1px solid #e0e0e0; border-radius: 8px; }
+    .item { display: flex; gap: 8px; padding: 6px 10px; border-bottom: 1px solid #f0f0f0; align-items: center; }
+    .item:last-child { border-bottom: none; }
+    .item .title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .item .meta { color: #999; font-size: 11px; }
+    .empty { padding: 24px; text-align: center; color: #aaa; }
+    .bar { display: flex; justify-content: space-between; align-items: center; margin: 10px 0; font-size: 12px; color: #666; }
+  </style>
+</head>
+<body>
+  <h1>📚 番茄批量上传器</h1>
+  <div class="sub">选择本地章节文件夹 → 勾选 → 开始上传</div>
+
+  <div class="row">
+    <!-- webkitdirectory 让用户选整个文件夹，比 showDirectoryPicker 在 popup 里更稳 -->
+    <input type="file" id="folder" webkitdirectory directory multiple hidden />
+    <button id="pick">📁 选择章节文件夹</button>
+    <span id="folderName" class="meta"></span>
+  </div>
+
+  <div class="bar">
+    <label><input type="checkbox" id="selectAll" /> 全选</label>
+    <span id="count">未加载</span>
+  </div>
+
+  <div id="list"><div class="empty">尚未选择文件夹</div></div>
+
+  <div class="row" style="margin-top: 12px;">
+    <button id="start" disabled>🚀 开始上传选中章节</button>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
