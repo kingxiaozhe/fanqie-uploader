@@ -335,13 +335,10 @@
     // label.arco-radio 里 .arco-radio-text 是"是"/"否"；番茄默认选"是"，需用完整鼠标序列点选并校验
     for (const r of dialog.querySelectorAll(SEL.radio)) {
       if ((r.textContent || "").trim() !== want) continue;
-      realClick(r);
+      const input = r.querySelector('input[type="radio"]');
+      realClick(input || r);   // 直接点 input（label 转发对合成事件不可靠）
       await delay(200);
-      if (!r.classList.contains("arco-radio-checked")) {
-        const input = r.querySelector('input[type="radio"]');
-        if (input) realClick(input);
-        await delay(200);
-      }
+      if (!r.classList.contains("arco-radio-checked")) { realClick(r); await delay(200); }
       const ok = r.classList.contains("arco-radio-checked");
       setStatus("🤖 是否使用AI：已选「" + want + "」" + (ok ? "" : "（未确认选中）"));
       return;
@@ -444,7 +441,7 @@
         if ((inner.textContent || "").trim() === want[c]) {
           cell.scrollIntoView({ block: "center" });
           await delay(100);
-          realClick(inner);
+          realClick(cell); // 点 li 容器（与日历一致，已验证可用）
           await delay(200);
           done++;
           break;
@@ -494,7 +491,7 @@
       return t.includes("确认发布") || t === "确定" || t === "发布";
     }) || primaries[0];
     if (!btn) throw new Error("未找到『确认发布』按钮");
-    btn.click();
+    realClick(btn); // 与日历/时间一致用完整鼠标序列
     setStatus("✅ 已点击确认发布，等待跳转…");
     await delay(1500);
   }
