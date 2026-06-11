@@ -28,12 +28,19 @@ function currentMode() {
   return document.querySelector('input[name="mode"]:checked').value;
 }
 
+// 起始日期模式切换：选「指定日期」时才显示日期框
+$("startDateMode").addEventListener("change", (e) => {
+  $("startDate").hidden = e.target.value !== "fixed";
+});
+
 // 收集发布设置
 function collectSettings() {
   return {
     publishMode: currentMode(),                       // immediate | auto | custom
-    dailyChapters: Math.max(1, Math.min(10, +$("dailyChapters").value || 3)),
-    startHour: $("startHour").value || "10:00",        // 智能定时的每日起始时刻
+    dailyChapters: Math.max(1, Math.min(12, +$("dailyChapters").value || 1)),
+    startHour: $("startHour").value || "06:00",        // 每日起始时刻（当天内均分的基准）
+    startDateMode: $("startDateMode").value,           // auto | fixed | tomorrow
+    startDate: $("startDate").value || null,           // 指定起始日期(YYYY-MM-DD)
     customStart: $("customStart").value || null,       // 自定义首章时间(datetime-local)
     autoRetry: $("autoRetry").checked,
     maxRetries: 3,

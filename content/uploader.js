@@ -64,9 +64,49 @@
       await delay(1200);
     }
 
+    // ② 定时模式：确定起始日期（自动接续已排期 / 指定 / 明天）
+    if ((session.settings?.publishMode) === "auto") {
+      session.scheduleStartDate = computeScheduleStartDate();
+      console.log("📅 定时起始日期:", session.scheduleStartDate);
+      await saveSession();
+    }
+
     const pending = session.tasks.filter((t) => t.status !== "uploaded").length;
     setIndicator(`🚀 准备上传 ${pending} 章（共 ${session.tasks.length}）`, "info");
     await processNext();
+  }
+
+  // 起始日期：auto=已排期最晚日期的次日；fixed=指定；tomorrow=明天。返回 YYYY-MM-DD
+  function computeScheduleStartDate() {
+    const s = session.settings || {};
+    const toYMD = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+    if (s.startDateMode === "fixed" && s.startDate) return s.startDate;
+
+    if (s.startDateMode === "tomorrow") {
+      const d = new Date();
+      d.setDate(d.getDate() + 1);
+      return toYMD(d);
+    }
+
+    // auto：读章节管理页里已排期的最晚日期，从次日开始；读不到则用明天
+    const latest = findLatestScheduledDate();
+    const d = latest || new Date();
+    d.setDate(d.getDate() + 1);
+    return toYMD(d);
+  }
+
+  // 扫描章节管理页表格，找出"发布时间"列里最晚的日期
+  function findLatestScheduledDate() {
+    let latest = null;
+    for (const row of document.querySelectorAll("tbody .arco-table-tr")) {
+      const m = (row.textContent || "").match(/(\d{4})-(\d{2})-(\d{2})(?:\s+(\d{2}):(\d{2}))?/);
+      if (!m) continue;
+      const d = new Date(+m[1], +m[2] - 1, +m[3], m[4] ? +m[4] : 0, m[5] ? +m[5] : 0);
+      if (!latest || d > latest) latest = d;
+    }
+    if (latest) console.log("📅 已排期最晚日期:", latest.toLocaleString());
+    return latest;
   }
 
   // ---------- 串行处理 ----------
@@ -153,18 +193,21 @@
     }
 
     if (s.publishMode === "auto") {
-      // 每天 dailyChapters 章，从 startHour 起，按小时递增
-      const daily = s.dailyChapters || 3;
-      const [hh, mm] = (s.startHour || "10:00").split(":").map(Number);
-      const day = Math.floor(index / daily);
-      const slot = index % daily;
-      const d = new Date();
-      d.setHours(hh, mm, 0, 0);
-      // 今天该时段已过，则从明天开始
-      if (day === 0 && Date.now() > d.getTime()) d.setDate(d.getDate() + 1);
-      else d.setDate(d.getDate() + day);
-      d.setHours(d.getHours() + slot);
-      return d.toISOString();
+      // 每天 N 章，当天内从 startHour 起按 24/N 小时平均分配；日期从 scheduleStartDate 起递增
+      const N = Math.max(1, s.dailyChapters || 1);
+      const [hh, mm] = (s.startHour || "06:00").split(":").map(Number);
+      const baseMin = hh * 60 + mm;
+      const stepMin = Math.floor(1440 / N);      // 一天均分到 N 个时段
+      const day = Math.floor(index / N);
+      const slot = index % N;
+
+      const start = session.scheduleStartDate
+        ? new Date(session.scheduleStartDate + "T00:00:00")
+        : (() => { const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(0, 0, 0, 0); return d; })();
+
+      start.setDate(start.getDate() + day);
+      start.setMinutes(baseMin + slot * stepMin); // setMinutes 会自动进位到小时
+      return start.toISOString();
     }
     return "now";
   }
