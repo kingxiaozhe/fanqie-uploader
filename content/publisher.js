@@ -332,17 +332,19 @@
   async function setAIChoice() {
     const want = currentSettings.useAI === "yes" ? "是" : "否";
     const dialog = document.querySelector(SEL.publishDialog) || document;
-    // 只在含「是否使用AI」字样的那一行附近找单选项
-    const radios = dialog.querySelectorAll(SEL.radio);
-    for (const r of radios) {
-      if ((r.textContent || "").trim() === want) {
+    // label.arco-radio 里 .arco-radio-text 是"是"/"否"；番茄默认选"是"，需用完整鼠标序列点选并校验
+    for (const r of dialog.querySelectorAll(SEL.radio)) {
+      if ((r.textContent || "").trim() !== want) continue;
+      realClick(r);
+      await delay(200);
+      if (!r.classList.contains("arco-radio-checked")) {
         const input = r.querySelector('input[type="radio"]');
-        (input || r).click();
-        r.click();
-        await delay(300);
-        setStatus("🤖 是否使用AI：已选「" + want + "」");
-        return;
+        if (input) realClick(input);
+        await delay(200);
       }
+      const ok = r.classList.contains("arco-radio-checked");
+      setStatus("🤖 是否使用AI：已选「" + want + "」" + (ok ? "" : "（未确认选中）"));
+      return;
     }
     console.warn("⚠️ 未找到『是否使用AI』选项，跳过");
   }
