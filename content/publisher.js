@@ -14,8 +14,9 @@
   "use strict";
 
   let processing = false;
-  let currentTask = null;   // 当前正在发布的章节（含 publishTime）
-  let dialogHandled = false; // 发布设置对话框是否已处理（防重复）
+  let currentTask = null;     // 当前正在发布的章节（含 publishTime）
+  let currentSettings = {};   // 本次会话的设置（dryRun / detectionMode 等）
+  let dialogHandled = false;  // 发布设置对话框是否已处理（防重复）
 
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (msg.type === "FILL_CHAPTER") {
@@ -35,14 +36,17 @@
     dialogHandled = false;
     console.log("📝 开始填充章节:", task.title, "| 发布时间:", task.publishTime || "now");
 
+    // 读取本次会话设置（dryRun / detectionMode 等）
+    const { upload_session } = await chrome.storage.local.get("upload_session");
+    currentSettings = upload_session?.settings || {};
+
     try {
       await waitForForm();
       await fillTitle(task);
       await fillContent(task);
 
       // 🧪 试填模式：填完就停，不提交、不关页，让用户检查
-      const { upload_session } = await chrome.storage.local.get("upload_session");
-      if (upload_session?.settings?.dryRun) {
+      if (currentSettings.dryRun) {
         showDryRunBanner();
         console.log("🧪 试填模式：已填充标题/正文，未点击发布。请人工检查页面。");
         processing = false;
@@ -115,8 +119,8 @@
     }
     const titleInput = findTitleInput();
     if (!titleInput) throw new Error("未找到标题输入框");
-    // 去掉"第N章："前缀，只填纯标题
-    const pure = task.title.replace(/^第\d+章[：:]\s*/, "");
+    // 去掉"第N章"前缀（章节号已单独填入），兼容冒号/空格/顿号等分隔符
+    const pure = task.title.replace(/^第\d+章[\s：:、.\-]*/, "").trim() || task.title;
     await typeInto(titleInput, pure);
   }
 
@@ -181,6 +185,14 @@
           clearInterval(timer);
           resolve(true);
           return;
+        }
+
+        // ⓪ 内容检测方式弹窗：默认点「仅基础检测」(不限次)，避免烧光全面检测额度
+        const detectBtn = findDetectionButton();
+        if (detectBtn) {
+          detectBtn.click();
+          console.log("✅ 内容检测方式：已选", detectBtn.textContent?.trim());
+          return; // 点完等下一轮
         }
 
         // ① 发布设置对话框（含定时开关 + 日期/时间选择器）——只处理一次
@@ -304,6 +316,21 @@
     for (const s of selectors) {
       const el = document.querySelector(s);
       if (el) return el;
+    }
+    return null;
+  }
+
+  // 「请选择内容检测方式」弹窗：返回应点击的按钮（默认仅基础检测）
+  function findDetectionButton() {
+    const modals = document.querySelectorAll(".arco-modal-content, .arco-modal");
+    for (const m of modals) {
+      if (!m.textContent?.includes("内容检测方式")) continue;
+      const wantFull = currentSettings.detectionMode === "full";
+      for (const b of m.querySelectorAll("button")) {
+        const t = (b.textContent || "").trim();
+        if (wantFull && t === "全面检测") return b;
+        if (!wantFull && t.includes("仅基础检测")) return b;
+      }
     }
     return null;
   }
