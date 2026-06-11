@@ -122,6 +122,7 @@
       await fillTitle(task);
       setStatus("📄 填写正文…");
       await fillContent(task);
+      await delay(1500); // 等番茄注册正文并自动保存，避免"下一步"因内容未就绪而无效
 
       // 🧪 试填模式：填完就停，不提交、不关页，让用户检查
       if (currentSettings.dryRun) {
@@ -279,6 +280,12 @@
         if (genericModal && !publishDialog) {
           const confirm = document.querySelector(SEL.modalPrimary);
           if (confirm) realClick(confirm);
+        }
+
+        // 补救：若一直没出现任何弹窗（说明"下一步"那下没生效），每 4 秒重点一次
+        if (n % 4 === 0 && !document.querySelector(".arco-modal")) {
+          clickSubmit();
+          setStatus("🔁 未见弹窗，重试点击下一步…");
         }
 
         if (n >= 60) {
