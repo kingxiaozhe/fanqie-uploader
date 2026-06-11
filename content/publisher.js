@@ -341,9 +341,9 @@
     const off = document.querySelector('.arco-switch[aria-checked="false"]');
     if (off) { off.click(); await delay(800); }
 
-    // 找日期/时间选择器输入框（按当前值的格式区分）
+    // 找日期输入框（按当前值的格式区分）
     const pickers = document.querySelectorAll(
-      ".arco-picker input, .arco-timepicker input, input.arco-picker-input, .arco-picker-start-time"
+      ".arco-picker input, input.arco-picker-input, .arco-picker-start-time"
     );
     let dateInput = null, timeInput = null;
     for (const el of pickers) {
@@ -351,34 +351,69 @@
       if (/\d{4}-\d{2}-\d{2}/.test(v)) dateInput = el;
       else if (/^\d{1,2}:\d{2}/.test(v)) timeInput = el;
     }
-    if (dateInput) await setPicker(dateInput, date);
-    if (timeInput) await setPicker(timeInput, time);
 
-    const mark = `日期${dateInput ? "✓" : "✗"} 时间${timeInput ? "✓" : "✗"}`;
-    if (!dateInput && !timeInput) {
-      setStatus("⚠️ 没找到日期/时间框，定时可能用了番茄默认值（" + mark + "）", "error");
-    } else {
-      setStatus("⏰ 已写入定时 " + date + " " + time + "（" + mark + "，请核对是否生效）");
+    if (!dateInput) {
+      setStatus("⚠️ 没找到日期框，定时用了番茄默认值", "error");
+      return;
+    }
+
+    const ok = await pickArcoDate(dateInput, d);
+    if (ok) setStatus("⏰ 已选日期 " + date + "（时间沿用 " + (timeInput?.value || "默认") + "）");
+    else setStatus("⚠️ 日历里没点中 " + date + "，可能用了默认值（需校准日历DOM）", "error");
+
+    // 时间：番茄默认 06:00；若目标时间不同则提示（暂未自动改时间）
+    if (timeInput && timeInput.value && timeInput.value.slice(0, 5) !== time) {
+      console.warn("⚠️ 目标时间", time, "与当前", timeInput.value, "不同，暂未自动设置时间");
     }
   }
 
-  // Arco 选择器：直接写 value 常不生效，模拟「聚焦→清空→输入→回车」提交
-  async function setPicker(el, value) {
-    el.focus();
-    el.click();
-    await delay(300);
-    setNativeValue(el, "");
-    el.dispatchEvent(new Event("input", { bubbles: true }));
-    setNativeValue(el, value);
-    el.dispatchEvent(new InputEvent("input", { bubbles: true, data: value }));
-    el.dispatchEvent(new Event("change", { bubbles: true }));
-    await delay(300);
-    for (const type of ["keydown", "keyup"]) {
-      el.dispatchEvent(new KeyboardEvent(type, { key: "Enter", code: "Enter", keyCode: 13, which: 13, bubbles: true }));
+  // 模拟点击 Arco 日历选日期：打开面板→翻到目标月→点中那一天
+  async function pickArcoDate(input, target) {
+    input.focus();
+    input.click();
+    await delay(500);
+
+    const panel = document.querySelector(
+      ".arco-picker-container, .arco-picker-range-container, .arco-panel-date, .arco-datepicker"
+    );
+    if (!panel) { console.warn("⚠️ 未找到日历面板"); return false; }
+
+    const targetYM = target.getFullYear() * 12 + target.getMonth();
+    // 翻月：最多翻 24 次防死循环
+    for (let i = 0; i < 24; i++) {
+      const title = panel.querySelector(".arco-picker-header-title, .arco-picker-header-value, .arco-picker-header-label");
+      const ym = parseYearMonth(title?.textContent || "");
+      if (ym === null) break;            // 解析不出就直接尝试点日
+      if (ym === targetYM) break;
+      const icons = panel.querySelectorAll(".arco-picker-header-icon");
+      // Arco 头部图标顺序通常为 [上一年, 上一月, 下一月, 下一年]
+      const icon = ym < targetYM ? icons[icons.length - 2] : icons[1];
+      if (!icon) break;
+      icon.click();
+      await delay(250);
     }
-    await delay(300);
-    el.blur();
-    await delay(300);
+
+    // 点目标日（只点"本月内、未禁用"的单元格）
+    const cells = panel.querySelectorAll(
+      ".arco-picker-cell.arco-picker-cell-in-view:not(.arco-picker-cell-disabled), " +
+      "td.arco-picker-cell-in-view:not(.arco-picker-cell-disabled)"
+    );
+    for (const c of cells) {
+      const inner = c.querySelector(".arco-picker-date-value, .arco-picker-cell-inner, .arco-picker-date") || c;
+      if ((inner.textContent || "").trim() === String(target.getDate())) {
+        inner.click();
+        await delay(400);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // 解析日历头部 "2026年6月" / "2026-06" / "2026 / 06" → year*12 + (month-1)
+  function parseYearMonth(text) {
+    const m = (text || "").match(/(\d{4})\D+(\d{1,2})/);
+    if (!m) return null;
+    return (+m[1]) * 12 + (+m[2] - 1);
   }
 
   async function setImmediateInDialog() {
