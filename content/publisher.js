@@ -17,6 +17,7 @@
   let currentTask = null;     // 当前正在发布的章节（含 publishTime）
   let currentSettings = {};   // 本次会话的设置（dryRun / detectionMode 等）
   let dialogHandled = false;  // 发布设置对话框是否已处理（防重复）
+  let submitted = false;      // 是否已点"下一步"创建了章节（失败后据此决定能否重试，防重复发布）
   let statusEl = null;        // 页面顶部状态横幅
   const DEBUG = false;        // 调试模式：true=失败保留标签页不重试；正式批量请保持 false
 
@@ -109,6 +110,7 @@
     processing = true;
     currentTask = task;
     dialogHandled = false;
+    submitted = false;
     console.log("📝 开始填充章节:", task.title, "| 发布时间:", task.publishTime || "now");
 
     try {
@@ -123,6 +125,12 @@
       setStatus("📄 填写正文…");
       await fillContent(task);
       await delay(1500); // 等番茄注册正文并自动保存，避免"下一步"因内容未就绪而无效
+
+      // 点下一步前校验正文真的填进去了（番茄富文本偶发不注册）。
+      // 空则在"创建章节之前"失败——既不会发空章，也安全可重试（submitted 仍为 false）。
+      if (task.content && (findContentArea()?.textContent || "").trim().length < 5) {
+        throw new Error("正文未成功填入，已中止（可安全重试）");
+      }
 
       // 🧪 试填模式：填完就停，不提交、不关页，让用户检查
       if (currentSettings.dryRun) {
@@ -142,7 +150,8 @@
       console.error("❌ 发布失败:", e);
       setStatus("❌ 卡住了：" + (e.message || e) + "（调试模式，页面保留）", "error");
       if (!DEBUG) {
-        chrome.runtime.sendMessage({ type: "TASK_FAILED", taskId: task.id, sessionId });
+        // 带上 submitted：若已点过下一步(章节可能已创建)，调度器不再重试，避免重复发布
+        chrome.runtime.sendMessage({ type: "TASK_FAILED", taskId: task.id, sessionId, submitted });
         setTimeout(() => chrome.runtime.sendMessage({ type: "CLOSE_TAB" }), 1500);
       }
       // DEBUG=true：不关页、不上报失败，停在原地让你看横幅卡在哪一步
@@ -255,6 +264,7 @@
         // ⓪ 内容检测方式弹窗：默认点「仅基础检测」(不限次)，避免烧光全面检测额度
         const detectBtn = findDetectionButton();
         if (detectBtn) {
+          submitted = true; // 走到检测说明"下一步"已生效、章节草稿已创建
           realClick(detectBtn);
           setStatus("🔍 内容检测：已选「" + (detectBtn.textContent?.trim()) + "」，等待…");
           return; // 点完等下一轮
@@ -262,6 +272,7 @@
 
         // ① 发布设置对话框（含定时开关 + 日期/时间选择器）——只处理一次
         const publishDialog = document.querySelector(SEL.publishDialog);
+        if (publishDialog) submitted = true; // 到发布弹窗，章节草稿必已创建
         if (publishDialog && !dialogHandled) {
           dialogHandled = true;
           clearInterval(timer);

@@ -25,7 +25,7 @@
 
     chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       if (msg.type === "TASK_DONE") onTaskDone(msg.taskId);
-      else if (msg.type === "TASK_FAILED") onTaskFailed(msg.taskId);
+      else if (msg.type === "TASK_FAILED") onTaskFailed(msg.taskId, msg.submitted);
       sendResponse?.({ success: true });
       return true;
     });
@@ -197,7 +197,7 @@
     setTimeout(processNext, 1000);
   }
 
-  async function onTaskFailed(taskId) {
+  async function onTaskFailed(taskId, submitted) {
     if (!session || taskId !== awaitingTaskId) return; // 忽略过期/重复消息
     clearWatchdog();
     awaitingTaskId = null;
@@ -205,12 +205,12 @@
     const used = session.retries[taskId] || 0;
     const task = session.tasks.find((x) => x.id === taskId);
 
-    // 防重复：重试前先看这章是不是其实已经发出去了（点过"下一步"就建了草稿章节）
-    // 是则标记完成、跳过，绝不重发，避免产生重复章节
-    if (task && (await isChapterAlreadyPublished(task))) {
-      task.status = "uploaded";
-      console.log("✅ 该章实际已存在，跳过重试，避免重复:", task.title);
-      setIndicator(`✅ 第 ${session.currentIndex + 1} 章已存在，跳过`, "info");
+    // 防重复关键：若发布器已点过"下一步"(submitted)，章节草稿很可能已创建——
+    // 此时绝不重试（重试会再建一个=重复），直接标记并跳过，交给人工/同步处理。
+    if (submitted || (task && (await isChapterAlreadyPublished(task)))) {
+      if (task) task.status = submitted ? "failed" : "uploaded";
+      console.log(`⏭️ 第${session.currentIndex + 1}章不重试(submitted=${!!submitted})，避免重复:`, task?.title);
+      setIndicator(`⏭️ 第 ${session.currentIndex + 1} 章已创建/已存在，跳过（防重复）`, "warning");
       session.currentIndex += 1;
       await saveSession();
       setTimeout(processNext, 1000);
