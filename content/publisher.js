@@ -325,12 +325,23 @@
     const modals = document.querySelectorAll(".arco-modal-content, .arco-modal");
     for (const m of modals) {
       if (!m.textContent?.includes("内容检测方式")) continue;
-      const wantFull = currentSettings.detectionMode === "full";
-      for (const b of m.querySelectorAll("button")) {
-        const t = (b.textContent || "").trim();
-        if (wantFull && t === "全面检测") return b;
-        if (!wantFull && t.includes("仅基础检测")) return b;
+      // 默认全面检测（每章 2 次额度）；仅当显式设为 basic 时才用基础检测
+      const wantFull = currentSettings.detectionMode !== "basic";
+      const buttons = [...m.querySelectorAll("button")];
+      const find = (pred) => buttons.find(pred);
+      const isDisabled = (b) =>
+        b.disabled || b.classList.contains("arco-btn-disabled") ||
+        b.getAttribute("aria-disabled") === "true";
+
+      const fullBtn = find((b) => (b.textContent || "").trim() === "全面检测");
+      const basicBtn = find((b) => (b.textContent || "").includes("仅基础检测"));
+
+      if (wantFull && fullBtn && !isDisabled(fullBtn)) return fullBtn;
+      if (wantFull && (!fullBtn || isDisabled(fullBtn)) && basicBtn) {
+        console.log("ℹ️ 全面检测次数已用完，回退到仅基础检测");
+        return basicBtn;
       }
+      if (!wantFull && basicBtn) return basicBtn;
     }
     return null;
   }
