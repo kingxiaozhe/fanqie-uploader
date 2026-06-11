@@ -44,10 +44,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           sendResponse({ success: true });
           break;
 
-        // 4) 发布器通知"本章完成"——转发给调度器所在的标签页，驱动它处理下一章
+        // 4) 发布器通知"本章完成/失败"——转发给调度器标签页驱动下一章；
+        //    完成后由后台直接关闭发布 tab（不依赖发布页脚本是否还活着，更可靠）
         case "TASK_DONE":
         case "TASK_FAILED":
-          await relayToUploaderTab(msg);
+          await relayToUploaderTab(msg, sender.tab?.id);
+          if (msg.type === "TASK_DONE" && sender.tab?.id) {
+            setTimeout(() => chrome.tabs.remove(sender.tab.id).catch(() => {}), 600);
+          }
           sendResponse({ success: true });
           break;
 
@@ -117,11 +121,11 @@ async function handleOpenPublishTab(data, sendResponse) {
   sendResponse({ success: true, tabId: tab.id });
 }
 
-// ---- 把"本章完成/失败"消息转发给调度器所在的标签页 ----
-async function relayToUploaderTab(msg) {
+// ---- 把"本章完成/失败"消息转发给调度器所在的标签页（排除发布页自身）----
+async function relayToUploaderTab(msg, excludeTabId) {
   const tabs = await chrome.tabs.query({ url: "https://fanqienovel.com/main/writer/*" });
   for (const t of tabs) {
-    if (!t.id) continue;
+    if (!t.id || t.id === excludeTabId) continue;
     chrome.tabs.sendMessage(t.id, msg).catch(() => {}); // 发布页标签可能已关，忽略错误
   }
 }

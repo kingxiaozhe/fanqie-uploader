@@ -95,9 +95,9 @@
       const ok = await submitAndConfirm();
       if (!ok) throw new Error("未能确认发布成功（超时或未跳转回章节管理页）");
 
-      setStatus("🎉 发布成功，即将跳转", "success");
+      setStatus("🎉 发布成功，本页即将关闭", "success");
+      // 通知调度器本章完成；发布 tab 由后台收到 TASK_DONE 后统一关闭（更可靠）
       chrome.runtime.sendMessage({ type: "TASK_DONE", taskId: task.id, sessionId });
-      setTimeout(() => chrome.runtime.sendMessage({ type: "CLOSE_TAB" }), 800);
     } catch (e) {
       console.error("❌ 发布失败:", e);
       setStatus("❌ 卡住了：" + (e.message || e) + "（调试模式，页面保留）", "error");
