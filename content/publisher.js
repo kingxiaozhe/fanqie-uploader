@@ -502,13 +502,12 @@
     await delay(400);
     closePickerDropdowns(); // 先关下拉浮层，确保"确认发布"是真正提交而非只关浮层
     await delay(400);
-    // 限定在发布设置弹窗内找，并校验按钮文字，避免误点别的弹窗按钮
+    // ⚠️ 只在弹窗【底部 footer】找主按钮！弹窗里还藏着时间选择器的"确定"按钮，
+    //    若全局搜会误点那个隐藏的"确定"（它在 DOM 里排在前面），导致发布点不动。
     const dialog = document.querySelector(SEL.publishDialog) || document;
-    const primaries = [...dialog.querySelectorAll(SEL.modalPrimary + ", button.arco-btn-primary")];
-    let btn = primaries.find((b) => {
-      const t = (b.textContent || "").trim();
-      return t.includes("确认发布") || t === "确定" || t === "发布";
-    }) || primaries[0];
+    const footer = dialog.querySelector(".arco-modal-footer") || dialog;
+    const primaries = [...footer.querySelectorAll("button.arco-btn-primary")];
+    let btn = primaries.find((b) => (b.textContent || "").trim().includes("确认发布")) || primaries[0];
     if (!btn) throw new Error("未找到『确认发布』按钮");
     // 三管齐下确保触发：完整鼠标序列 + 点内层 span + 原生 click
     realClick(btn);
