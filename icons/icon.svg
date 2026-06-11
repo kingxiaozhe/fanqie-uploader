@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ff6b5e"/>
+      <stop offset="1" stop-color="#e0392b"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="120" height="120" rx="26" fill="url(#bg)"/>
+  <!-- 番茄叶子 -->
+  <path d="M64 30 l8 -12 l-2 12 l12 -6 l-10 10 z" fill="#3ec46d"/>
+  <!-- 番茄身体 -->
+  <circle cx="64" cy="74" r="34" fill="#ffffff" opacity="0.95"/>
+  <!-- 上传箭头 -->
+  <path d="M64 56 l16 18 h-10 v18 h-12 v-18 h-10 z" fill="#e0392b"/>
+</svg>

@@ -24,6 +24,11 @@
     .item .meta { color: #999; font-size: 11px; }
     .empty { padding: 24px; text-align: center; color: #aaa; }
     .bar { display: flex; justify-content: space-between; align-items: center; margin: 10px 0; font-size: 12px; color: #666; }
+    fieldset { border: 1px solid #e0e0e0; border-radius: 8px; margin: 0 0 10px; padding: 8px 12px; }
+    legend { font-size: 12px; color: #888; padding: 0 4px; }
+    .opt { display: block; font-size: 13px; margin: 3px 0; cursor: pointer; }
+    .cfg { font-size: 12px; color: #666; margin: 4px 0 4px 20px; }
+    .cfg input[type="number"], .cfg input[type="time"], .cfg input[type="datetime-local"] { font: inherit; }
   </style>
 </head>
 <body>
@@ -36,6 +41,24 @@
     <button id="pick">📁 选择章节文件夹</button>
     <span id="folderName" class="meta"></span>
   </div>
+
+  <!-- 发布设置 -->
+  <fieldset id="settings">
+    <legend>发布设置</legend>
+    <label class="opt"><input type="radio" name="mode" value="immediate" checked /> ⚡ 立即发布</label>
+    <label class="opt"><input type="radio" name="mode" value="auto" /> 🤖 智能定时</label>
+    <label class="opt"><input type="radio" name="mode" value="custom" /> ⏰ 自定义起始时间</label>
+
+    <div class="cfg" id="autoCfg" hidden>
+      每日 <input type="number" id="dailyChapters" value="3" min="1" max="10" style="width:48px" /> 章，
+      从 <input type="time" id="startHour" value="10:00" /> 起，按小时递增
+    </div>
+    <div class="cfg" id="customCfg" hidden>
+      首章发布时间 <input type="datetime-local" id="customStart" />，后续每小时一章
+    </div>
+
+    <label class="opt"><input type="checkbox" id="autoRetry" checked /> 失败自动重试（最多 3 次）</label>
+  </fieldset>
 
   <div class="bar">
     <label><input type="checkbox" id="selectAll" /> 全选</label>

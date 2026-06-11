@@ -5,12 +5,24 @@
   "description": "选择本地章节文件夹，自动批量发布到番茄小说作者后台。纯手写 MV3 脚手架。",
   "permissions": ["storage", "tabs", "notifications"],
   "host_permissions": ["https://fanqienovel.com/*"],
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
   "background": {
     "service_worker": "background.js"
   },
   "action": {
     "default_popup": "popup/popup.html",
-    "default_title": "番茄上传器"
+    "default_title": "番茄上传器",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
   },
   "content_scripts": [
     {

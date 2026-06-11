@@ -60,12 +60,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
 // ---- 开始上传：把会话存进 storage，打开番茄作者后台 ----
 async function handleStartUpload(data, sendResponse) {
-  const { tasks, sessionId } = data;
+  const { tasks, sessionId, settings } = data;
   await chrome.storage.local.set({
     upload_session: {
       sessionId,
       tasks,
+      settings: settings || { publishMode: "immediate", autoRetry: true, maxRetries: 3 },
       currentIndex: 0,
+      retries: {},        // { [taskId]: 已重试次数 }
       status: "preparing",
       startTime: Date.now(),
     },

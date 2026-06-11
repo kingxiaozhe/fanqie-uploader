@@ -15,6 +15,31 @@ $("selectAll").addEventListener("change", (e) => {
 });
 $("start").addEventListener("click", onStart);
 
+// 发布模式切换：显示对应的配置区
+document.querySelectorAll('input[name="mode"]').forEach((r) =>
+  r.addEventListener("change", () => {
+    const mode = currentMode();
+    $("autoCfg").hidden = mode !== "auto";
+    $("customCfg").hidden = mode !== "custom";
+  })
+);
+
+function currentMode() {
+  return document.querySelector('input[name="mode"]:checked').value;
+}
+
+// 收集发布设置
+function collectSettings() {
+  return {
+    publishMode: currentMode(),                       // immediate | auto | custom
+    dailyChapters: Math.max(1, Math.min(10, +$("dailyChapters").value || 3)),
+    startHour: $("startHour").value || "10:00",        // 智能定时的每日起始时刻
+    customStart: $("customStart").value || null,       // 自定义首章时间(datetime-local)
+    autoRetry: $("autoRetry").checked,
+    maxRetries: 3,
+  };
+}
+
 async function onFolderPicked(e) {
   const files = [...e.target.files].filter((f) => f.name.toLowerCase().endsWith(".txt"));
   if (!files.length) {
@@ -86,7 +111,7 @@ async function onStart() {
   const sessionId = "s_" + cryptoId();
   const resp = await chrome.runtime.sendMessage({
     type: "START_UPLOAD",
-    data: { tasks: selected, sessionId },
+    data: { tasks: selected, sessionId, settings: collectSettings() },
   });
   alert(resp?.message || "上传会话已启动");
   window.close();

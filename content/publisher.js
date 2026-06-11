@@ -14,6 +14,8 @@
   "use strict";
 
   let processing = false;
+  let currentTask = null;   // 当前正在发布的章节（含 publishTime）
+  let dialogHandled = false; // 发布设置对话框是否已处理（防重复）
 
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (msg.type === "FILL_CHAPTER") {
@@ -29,13 +31,14 @@
   async function fillChapter({ task, sessionId }) {
     if (processing) return;
     processing = true;
-    console.log("📝 开始填充章节:", task.title);
+    currentTask = task;
+    dialogHandled = false;
+    console.log("📝 开始填充章节:", task.title, "| 发布时间:", task.publishTime || "now");
 
     try {
       await waitForForm();
       await fillTitle(task);
       await fillContent(task);
-      await setPublishOption(task);
       const ok = await submitAndConfirm();
       if (!ok) throw new Error("未能确认发布成功");
 
@@ -151,15 +154,6 @@
     console.log("✅ 正文填充完成");
   }
 
-  // ---------- 发布方式 ----------
-  async function setPublishOption(task) {
-    // 脚手架默认立即发布；task.publishTime 存在时可扩展为定时
-    if (task.publishTime) {
-      console.log("⏰ TODO: 设置定时发布", task.publishTime);
-    }
-    // 立即发布通常是默认项，无需额外操作
-  }
-
   // ---------- 提交 + 处理弹窗 + 判断成功 ----------
   async function submitAndConfirm() {
     const btn = findButtonByText(["下一步", "发布", "提交"]) ||
@@ -170,7 +164,7 @@
 
     return new Promise((resolve) => {
       let n = 0;
-      const timer = setInterval(() => {
+      const timer = setInterval(async () => {
         n++;
         // 成功标志：跳转回章节管理页
         if (/\/main\/writer\/chapter-manage\/\d+/.test(location.href)) {
@@ -178,12 +172,30 @@
           resolve(true);
           return;
         }
-        // 自动点掉确认类弹窗（错别字提示 / 二次确认等）
-        const modal = document.querySelector(".arco-modal-content, .arco-modal-footer");
-        if (modal) {
+
+        // ① 发布设置对话框（含定时开关 + 日期/时间选择器）——只处理一次
+        const publishDialog = document.querySelector(".arco-modal.publish-confirm-container-new");
+        if (publishDialog && !dialogHandled) {
+          dialogHandled = true;
+          clearInterval(timer);
+          try {
+            await handlePublishDialog();
+            // 处理完继续轮询等待跳转
+            resumePolling(resolve);
+          } catch (e) {
+            console.error("❌ 处理发布对话框失败:", e);
+            resolve(false);
+          }
+          return;
+        }
+
+        // ② 其它确认类弹窗（错别字提示 / 二次确认等）——直接点确认
+        const genericModal = document.querySelector(".arco-modal-content");
+        if (genericModal && !publishDialog) {
           const confirm = document.querySelector(".arco-modal-footer button.arco-btn-primary");
           if (confirm) confirm.click();
         }
+
         if (n >= 60) {
           clearInterval(timer);
           resolve(false);
@@ -191,6 +203,80 @@
       }, 1000);
     });
   }
+
+  // 处理完发布对话框后，继续轮询等待页面跳转
+  function resumePolling(resolve) {
+    let n = 0;
+    const timer = setInterval(() => {
+      n++;
+      if (/\/main\/writer\/chapter-manage\/\d+/.test(location.href)) {
+        clearInterval(timer);
+        resolve(true);
+      } else if (n >= 30) {
+        clearInterval(timer);
+        resolve(false);
+      }
+    }, 1000);
+  }
+
+  // ---------- 发布设置对话框：设定时/立即 + 点确认发布 ----------
+  async function handlePublishDialog() {
+    await delay(800);
+    const pt = currentTask?.publishTime;
+    if (pt && pt !== "now") await setScheduledInDialog(pt);
+    else await setImmediateInDialog();
+    await clickConfirmPublish();
+  }
+
+  async function setScheduledInDialog(iso) {
+    const d = new Date(iso);
+    const date = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    const time = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    console.log("⏰ 定时发布:", date, time);
+
+    // 打开"定时发布"开关（当前关闭时）
+    const off = document.querySelector('.arco-switch[aria-checked="false"]');
+    if (off) { off.click(); await delay(800); }
+
+    // 填日期/时间选择器（番茄用 .arco-picker-start-time，按内容区分日期框/时间框）
+    const pickers = document.querySelectorAll(".arco-picker-start-time, .arco-picker input");
+    let dateInput = null, timeInput = null;
+    for (const el of pickers) {
+      const v = el.value || "";
+      if (/\d{4}-\d{2}/.test(v)) dateInput = el;
+      else if (/\d{1,2}:\d{2}/.test(v)) timeInput = el;
+    }
+    if (dateInput) await setPicker(dateInput, date);
+    if (timeInput) await setPicker(timeInput, time);
+    if (!dateInput && !timeInput) console.warn("⚠️ 未找到日期/时间输入框，定时可能未生效");
+  }
+
+  async function setPicker(el, value) {
+    el.focus();
+    setNativeValue(el, value);
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+    el.blur();
+    await delay(400);
+  }
+
+  async function setImmediateInDialog() {
+    // 若定时开关是开启状态，关掉它 = 立即发布
+    const on = document.querySelector('.arco-switch[aria-checked="true"]');
+    if (on) { on.click(); await delay(400); }
+  }
+
+  async function clickConfirmPublish() {
+    await delay(600);
+    const span = document.querySelector(".arco-modal-footer button.arco-btn-primary span");
+    const btn = span?.parentElement || query([".arco-modal-footer button.arco-btn-primary"]);
+    if (!btn) throw new Error("未找到『确认发布』按钮");
+    btn.click();
+    console.log("✅ 已点击确认发布");
+    await delay(1500);
+  }
+
+  function pad(n) { return String(n).padStart(2, "0"); }
 
   // ---------- 工具 ----------
   function query(selectors) {
