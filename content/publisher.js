@@ -115,6 +115,7 @@
       let n = 0;
       const timer = setInterval(() => {
         n++;
+        dismissDraftPrompt(); // 草稿提示可能在页面加载时弹出，先点掉「放弃」
         if (findTitleInput() && findContentArea()) {
           clearInterval(timer);
           resolve();
@@ -228,6 +229,9 @@
           resolve(true);
           return;
         }
+
+        // 草稿提示（有刚刚更新的草稿）——点「放弃」
+        if (dismissDraftPrompt()) return;
 
         // ⓪ 内容检测方式弹窗：默认点「仅基础检测」(不限次)，避免烧光全面检测额度
         const detectBtn = findDetectionButton();
@@ -411,6 +415,22 @@
       if (el) return el;
     }
     return null;
+  }
+
+  // 「有刚刚更新的草稿，是否继续编辑？」提示：点「放弃」(丢弃旧草稿，用我们填的新内容)
+  function dismissDraftPrompt() {
+    for (const m of document.querySelectorAll(".arco-modal-content, .arco-modal")) {
+      const t = m.textContent || "";
+      if (!t.includes("草稿") || !t.includes("继续编辑")) continue;
+      for (const b of m.querySelectorAll("button")) {
+        if ((b.textContent || "").trim() === "放弃") {
+          b.click();
+          setStatus("🗑️ 检测到草稿提示，已选「放弃」");
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   // 「请选择内容检测方式」弹窗：返回应点击的按钮（默认仅基础检测）
