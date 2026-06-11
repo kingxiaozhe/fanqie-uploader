@@ -312,7 +312,12 @@
           resolve(true);
           return;
         }
-        if (n >= 25) { clearInterval(timer); resolve(false); }
+        if (n >= 25) {
+          // 诊断：超时时弹窗是否还开着——开着=确认没真正提交；关了=提交了但没识别到成功
+          setStatus("⌛ 等结果超时（发布弹窗" + (dialogGone ? "已关闭" : "仍打开") + "）", "error");
+          clearInterval(timer);
+          resolve(false);
+        }
       }, 800);
     });
   }
