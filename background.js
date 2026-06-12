@@ -48,6 +48,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         //    完成后由后台直接关闭发布 tab（不依赖发布页脚本是否还活着，更可靠）
         case "TASK_DONE":
         case "TASK_FAILED":
+        case "TASK_STOPPED":
           await relayToUploaderTab(msg, sender.tab?.id);
           if (msg.type === "TASK_DONE" && sender.tab?.id) {
             setTimeout(() => chrome.tabs.remove(sender.tab.id).catch(() => {}), 600);

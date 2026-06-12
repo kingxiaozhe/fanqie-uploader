@@ -51,6 +51,14 @@
     radio: ".arco-radio",
   };
 
+  // 用户是否已请求停止（进度面板/浮标/popup 的停止按钮写入 upload_control=stop）
+  async function stopRequested() {
+    try {
+      const { upload_control } = await chrome.storage.local.get("upload_control");
+      return upload_control === "stop";
+    } catch (_) { return false; }
+  }
+
   // 轮询等待条件成立（替代写死的 delay，更稳更快）。返回是否在超时前成立。
   async function waitFor(fn, { timeout = 8000, interval = 200 } = {}) {
     const end = Date.now() + timeout;
@@ -120,8 +128,10 @@
       currentSettings = upload_session?.settings || {};
       paceFactor = currentSettings.pace || 1; // 操作节奏：放慢所有 delay
 
+      if (await stopRequested()) return abortByStop(task, sessionId);
       setStatus("⏳ 等待编辑器加载…");
       await waitForForm();
+      if (await stopRequested()) return abortByStop(task, sessionId);
       setStatus("✏️ 填写章节号 / 标题…");
       await fillTitle(task);
       setStatus("📄 填写正文…");
@@ -157,6 +167,9 @@
         return; // 不发送 TASK_DONE，调度器会停在这一章（符合预期）
       }
 
+      // ⏹ 最后一道闸：点"下一步"前响应停止——此刻章节还没创建，停下零副作用
+      if (await stopRequested()) return abortByStop(task, sessionId);
+
       setStatus("🚀 点击下一步 / 发布，处理弹窗…");
       const ok = await submitAndConfirm();
       if (!ok) throw new Error("未能确认发布成功（超时或未跳转回章节管理页）");
@@ -176,6 +189,13 @@
     } finally {
       processing = false;
     }
+  }
+
+  // 响应停止信号：本章未提交，干净中止并通知调度器
+  function abortByStop(task, sessionId) {
+    setStatus("⏹ 已停止（本章未提交）", "warning");
+    chrome.runtime.sendMessage({ type: "TASK_STOPPED", taskId: task.id, sessionId });
+    processing = false;
   }
 
   // ---------- 等表单就绪 ----------

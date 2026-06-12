@@ -26,6 +26,7 @@
     chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       if (msg.type === "TASK_DONE") onTaskDone(msg.taskId);
       else if (msg.type === "TASK_FAILED") onTaskFailed(msg.taskId, msg.submitted);
+      else if (msg.type === "TASK_STOPPED") onTaskStopped(msg.taskId);
       sendResponse?.({ success: true });
       return true;
     });
@@ -188,6 +189,17 @@
   }
   function clearWatchdog() { if (watchdog) { clearTimeout(watchdog); watchdog = null; } }
 
+  // 发布器在提交前响应了停止信号——本章未创建，干净停下
+  async function onTaskStopped(taskId) {
+    if (!session) return;
+    clearWatchdog();
+    awaitingTaskId = null;
+    session.status = "stopped";
+    await saveSession();
+    setIndicator("⏹ 已停止（本章未提交，可重新开始）", "warning");
+    busy = false;
+  }
+
   async function onTaskDone(taskId) {
     if (!session || taskId !== awaitingTaskId) return; // 忽略过期/重复消息
     clearWatchdog();
@@ -338,25 +350,42 @@
     await chrome.storage.local.set({ upload_session: session });
   }
 
-  // ---------- 状态浮标 ----------
+  // ---------- 状态浮标（带停止按钮）----------
+  let indicatorText = null;
   function createIndicator() {
     if (indicator) return;
     indicator = document.createElement("div");
     indicator.id = "fq-uploader-indicator";
     indicator.style.cssText = `
       position:fixed;top:20px;left:20px;z-index:99999;
-      background:#3498db;color:#fff;padding:12px 16px;border-radius:8px;
-      font:500 13px/1.4 system-ui;max-width:320px;display:none;
-      box-shadow:0 4px 12px rgba(0,0,0,.3);transition:all .3s ease;`;
+      background:#3498db;color:#fff;padding:10px 14px;border-radius:8px;
+      font:500 13px/1.4 system-ui;max-width:360px;display:none;
+      box-shadow:0 4px 12px rgba(0,0,0,.3);transition:all .3s ease;
+      align-items:center;gap:10px;`;
+    indicatorText = document.createElement("span");
+    indicator.appendChild(indicatorText);
+
+    const stopBtn = document.createElement("button");
+    stopBtn.textContent = "⏹ 停止";
+    stopBtn.style.cssText = `
+      flex:none;border:1px solid rgba(255,255,255,.7);background:rgba(0,0,0,.18);
+      color:#fff;border-radius:6px;padding:3px 10px;font:600 12px/1.4 system-ui;cursor:pointer;`;
+    stopBtn.addEventListener("click", async () => {
+      await chrome.storage.local.set({ upload_control: "stop" });
+      stopBtn.disabled = true;
+      stopBtn.textContent = "⏹ 停止中…";
+      setIndicator("⏹ 已请求停止：当前章若未提交会立即中止", "warning");
+    });
+    indicator.appendChild(stopBtn);
     document.body.appendChild(indicator);
   }
 
   function setIndicator(text, level = "info") {
     if (!indicator) return;
     const colors = { info: "#3498db", success: "#27ae60", warning: "#f39c12", error: "#e74c3c" };
-    indicator.textContent = text;
+    indicatorText.textContent = text;
     indicator.style.background = colors[level] || colors.info;
-    indicator.style.display = "block";
+    indicator.style.display = "flex";
   }
 
   function delay(ms) {

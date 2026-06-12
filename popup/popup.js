@@ -15,6 +15,13 @@ $("selectAll").addEventListener("change", (e) => {
 });
 $("start").addEventListener("click", onStart);
 
+// 停止上传：写入停止信号，发布器在提交前、调度器在章节间都会响应
+$("stopBtn").addEventListener("click", async () => {
+  await chrome.storage.local.set({ upload_control: "stop" });
+  $("stopBtn").disabled = true;
+  $("stopBtn").textContent = "⏹ 已请求停止";
+});
+
 // 打开侧边进度面板
 $("openPanel").addEventListener("click", async () => {
   try {
