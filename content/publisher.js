@@ -185,8 +185,9 @@
       // 通知调度器本章完成；发布 tab 由后台收到 TASK_DONE 后统一关闭（更可靠）
       chrome.runtime.sendMessage({ type: "TASK_DONE", taskId: task.id, sessionId });
     } catch (e) {
-      console.error("❌ 发布失败:", e);
-      setStatus("❌ 卡住了：" + (e.message || e) + "（调试模式，页面保留）", "error");
+      // 已点过下一步(submitted)的失败由调度器防重复兜底处理，属可控情况 → 用 warn 不刷红
+      (submitted ? console.warn : console.error)("本章未确认成功:", e.message || e);
+      setStatus("⚠️ 本章未确认成功：" + (e.message || e), "error");
       if (!DEBUG) {
         // 带上 submitted：若已点过下一步(章节可能已创建)，调度器不再重试，避免重复发布
         chrome.runtime.sendMessage({ type: "TASK_FAILED", taskId: task.id, sessionId, submitted });
@@ -401,15 +402,30 @@
         }
         if (secondaryHandled) return; // 刚点了二次确认，等下一轮再判结果
 
-        // 自愈：发布弹窗还开着且等了较久——大概率"确认发布"那下没生效，自动重点
-        if (!dialogClosed && (n === 8 || n === 18 || n === 30)) {
+        // 内联校验错误：弹窗里 .card-error-line 有文字 = 番茄拒绝了（如时间不合规），暴露真实原因
+        if (!dialogClosed) {
+          const dlg = document.querySelector(SEL.publishDialog);
+          const errLine = dlg && [...dlg.querySelectorAll(".card-error-line")]
+            .map((e) => (e.textContent || "").trim()).find((t) => t.length > 1);
+          if (errLine) {
+            setStatus("❌ 发布弹窗校验不通过：" + errLine, "error");
+            clearInterval(timer);
+            resolve(false);
+            return;
+          }
+        }
+
+        // 自愈：发布弹窗还开着且等了较久——大概率"确认发布"那下没生效，自动重点（更频繁）
+        if (!dialogClosed && n > 4 && n % 5 === 0) {
           const footer = document.querySelector(SEL.publishDialog + " .arco-modal-footer");
           const again = footer && [...footer.querySelectorAll("button.arco-btn-primary")]
             .find((b) => (b.textContent || "").includes("确认发布"));
           if (again) {
+            closePickerDropdowns();          // 先关掉可能挡住的日期/时间浮层
             realClick(again);
             try { again.click(); } catch (_) {}
-            setStatus("🔁 弹窗未关，重点「确认发布」…");
+            const span = again.querySelector("span"); if (span) realClick(span);
+            setStatus("🔁 弹窗未关，重点「确认发布」(" + n + ")…");
             return;
           }
         }
