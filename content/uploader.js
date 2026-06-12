@@ -86,6 +86,7 @@
     await saveSession();
 
     session.status = "uploading";
+    if (typeof session.runCount !== "number") session.runCount = 0; // #1 本次已发计数
     const pending = session.tasks.filter((t) => t.status !== "uploaded").length;
     await saveSession();
     setIndicator(`🚀 准备上传 ${pending} 章（共 ${session.tasks.length}）`, "info");
@@ -135,6 +136,17 @@
       session.status = "stopped";
       await saveSession();
       setIndicator("⏹ 已停止上传", "warning");
+      busy = false;
+      return;
+    }
+
+    // #1 本次发布量上限：达到就停下（番茄风控更看频率，到量自动停最稳）
+    const maxBatch = session.settings?.maxPerBatch || 0;
+    if (maxBatch > 0 && (session.runCount || 0) >= maxBatch) {
+      session.status = "stopped";
+      await saveSession();
+      setIndicator(`✋ 已达本次上限 ${maxBatch} 章，自动停止（可稍后再发）`, "warning");
+      chrome.runtime.sendMessage({ type: "NOTIFY", message: `已达本次上限 ${maxBatch} 章，自动停止` });
       busy = false;
       return;
     }
@@ -228,6 +240,7 @@
     awaitingTaskId = null;
     const t = session.tasks.find((x) => x.id === taskId);
     if (t) t.status = "uploaded";
+    session.runCount = (session.runCount || 0) + 1; // #1 计入本次已发
     console.log("✅ 本章完成:", taskId);
     session.currentIndex += 1;
     await saveSession();
@@ -266,6 +279,8 @@
     const t = session.tasks.find((x) => x.id === taskId);
     if (t) t.status = "failed";
     console.warn("❌ 本章最终失败，跳过:", taskId);
+    // #3 失败时桌面通知，批量跑不用一直盯着
+    chrome.runtime.sendMessage({ type: "NOTIFY", message: `章节发布失败：${t?.title || taskId}（已跳过，可稍后重发）` });
     session.currentIndex += 1;
     await saveSession();
     setTimeout(processNext, 1000 * pace());
@@ -299,6 +314,10 @@
 
       start.setDate(start.getDate() + day);
       start.setMinutes(baseMin + slot * stepMin); // setMinutes 会自动进位到小时
+
+      // #2 发布时间随机分钟偏移：打破整点规律，更像人工（minuteJitter 分钟内随机 ±）
+      const mj = s.minuteJitter || 0;
+      if (mj > 0) start.setMinutes(start.getMinutes() + Math.floor((Math.random() * 2 - 1) * mj));
       return start.toISOString();
     }
     return "now";

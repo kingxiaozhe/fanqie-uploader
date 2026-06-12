@@ -23,6 +23,7 @@ $("retryFailed").addEventListener("click", async () => {
   if (!count) return;
   s.retries = {};
   s.currentIndex = 0;
+  s.runCount = 0;
   s.status = "preparing";
   await chrome.storage.local.remove("upload_control");
   await chrome.storage.local.set({ upload_session: s });

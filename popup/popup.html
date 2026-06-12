@@ -76,6 +76,12 @@
       <input type="number" id="gapMin" value="5" min="0" max="600" style="width:52px" /> ~
       <input type="number" id="gapMax" value="20" min="1" max="600" style="width:52px" /> 秒
     </div>
+    <div class="cfg">发布时间随机偏移 ±
+      <input type="number" id="minuteJitter" value="10" min="0" max="120" style="width:48px" /> 分钟（定时模式，破整点规律）
+    </div>
+    <div class="cfg">本次最多发
+      <input type="number" id="maxPerBatch" value="0" min="0" max="999" style="width:56px" /> 章（0=不限；到量自动停，降低风控）
+    </div>
     <label class="opt"><input type="checkbox" id="autoRetry" checked /> 失败自动重试（最多 3 次）</label>
     <label class="opt"><input type="checkbox" id="fullDetection" checked /> 发布用「全面检测」（每章 2 次额度；取消则仅基础检测）</label>
     <label class="opt">是否使用 AI（声明）：

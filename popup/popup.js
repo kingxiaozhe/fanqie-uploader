@@ -71,6 +71,8 @@ async function restoreSettings() {
     if (typeof s.humanize === "boolean") $("humanize").checked = s.humanize;
     if (s.gapMin != null) $("gapMin").value = s.gapMin;
     if (s.gapMax != null) $("gapMax").value = s.gapMax;
+    if (s.minuteJitter != null) $("minuteJitter").value = s.minuteJitter;
+    if (s.maxPerBatch != null) $("maxPerBatch").value = s.maxPerBatch;
     if (s.detectionMode) $("fullDetection").checked = s.detectionMode === "full";
     if (s.useAI) $("useAI").value = s.useAI;
     // dryRun（试填模式）不恢复，每次默认关闭，避免下次静默不发布
@@ -107,6 +109,8 @@ function collectSettings() {
     humanize: $("humanize").checked,                   // 拟人随机延迟（反识别）
     gapMin: Math.max(0, +$("gapMin").value || 5),      // 章节间隔随机下限（秒）
     gapMax: Math.max(1, +$("gapMax").value || 20),     // 章节间隔随机上限（秒）
+    minuteJitter: Math.max(0, +$("minuteJitter").value || 0), // 发布时间随机偏移±分钟
+    maxPerBatch: Math.max(0, +$("maxPerBatch").value || 0),   // 本次发布量上限（0=不限）
     detectionMode: $("fullDetection").checked ? "full" : "basic", // 内容检测方式
     useAI: $("useAI").value,                            // 是否使用AI声明: no | yes
     dryRun: $("dryRun").checked,                        // 试填模式：只填表不发布
