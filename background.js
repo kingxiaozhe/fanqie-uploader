@@ -49,6 +49,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         case "TASK_DONE":
         case "TASK_FAILED":
         case "TASK_STOPPED":
+        case "RESUME_UPLOAD":
           await relayToUploaderTab(msg, sender.tab?.id);
           if (msg.type === "TASK_DONE" && sender.tab?.id) {
             setTimeout(() => chrome.tabs.remove(sender.tab.id).catch(() => {}), 600);

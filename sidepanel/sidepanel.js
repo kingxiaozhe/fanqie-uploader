@@ -12,6 +12,25 @@ $("stop").addEventListener("click", async () => {
   $("stop").textContent = "⏹ 已请求停止…";
 });
 
+// 重发失败章节：把 failed 任务重置为待发，从头跑（已发的会被同步跳过，防重复仍生效）
+$("retryFailed").addEventListener("click", async () => {
+  const { upload_session: s } = await chrome.storage.local.get("upload_session");
+  if (!s || !s.tasks) return;
+  let count = 0;
+  s.tasks.forEach((t) => {
+    if (t.status === "failed") { delete t.status; count++; }
+  });
+  if (!count) return;
+  s.retries = {};
+  s.currentIndex = 0;
+  s.status = "preparing";
+  await chrome.storage.local.remove("upload_control");
+  await chrome.storage.local.set({ upload_session: s });
+  chrome.runtime.sendMessage({ type: "RESUME_UPLOAD" });
+  $("retryFailed").textContent = `🔁 已重新排队 ${count} 章`;
+  $("retryFailed").disabled = true;
+});
+
 function render(session) {
   const list = $("list");
   if (!session || !session.tasks?.length) {
@@ -39,6 +58,10 @@ function render(session) {
   const running = session.status !== "completed" && session.status !== "stopped";
   $("stop").disabled = !running;
   if (running) { $("stop").textContent = "⏹ 停止上传"; }
+
+  // 重发按钮：有失败章节且不在运行中时可用
+  $("retryFailed").disabled = !(failed > 0 && !running);
+  if (failed > 0 && !running) $("retryFailed").textContent = `🔁 重发失败章节 (${failed})`;
 
   list.innerHTML = "";
   tasks.forEach((t, i) => {

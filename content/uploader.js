@@ -28,6 +28,7 @@
       if (msg.type === "TASK_DONE") onTaskDone(msg.taskId);
       else if (msg.type === "TASK_FAILED") onTaskFailed(msg.taskId, msg.submitted);
       else if (msg.type === "TASK_STOPPED") onTaskStopped(msg.taskId);
+      else if (msg.type === "RESUME_UPLOAD") resumeUpload();
       sendResponse?.({ success: true });
       return true;
     });
@@ -189,6 +190,17 @@
     }, CHAPTER_TIMEOUT);
   }
   function clearWatchdog() { if (watchdog) { clearTimeout(watchdog); watchdog = null; } }
+
+  // 进度面板点了"重发失败章节"：重读会话、重置状态、重新跑（同步去重仍生效）
+  async function resumeUpload() {
+    const { upload_session } = await chrome.storage.local.get("upload_session");
+    if (upload_session) session = upload_session;
+    clearWatchdog();
+    awaitingTaskId = null;
+    busy = false;
+    setIndicator("🔁 重发失败章节…", "info");
+    detectAndAct();
+  }
 
   // 发布器在提交前响应了停止信号——本章未创建，干净停下
   async function onTaskStopped(taskId) {
