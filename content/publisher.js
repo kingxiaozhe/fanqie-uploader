@@ -101,6 +101,15 @@
 
   console.log("📝 章节发布器已加载:", location.href);
 
+  // 接收 net-hook 截获的"发布接口"权威结果（成功与否以番茄接口返回为准）
+  let netPublishResult = null;
+  window.addEventListener("message", (e) => {
+    if (e.source === window && e.data && e.data.__fqNet && e.data.type === "publish-result") {
+      netPublishResult = e.data;
+      console.log("🔌 收到发布接口结果:", e.data);
+    }
+  });
+
   // 主动向后台拉取本标签页要发布的章节（规避 background 推送的竞态）
   requestTaskWithRetry();
 
@@ -373,6 +382,16 @@
       const visible = (el) => !!el && el.offsetParent !== null; // Arco 关闭后壳子可能留在 DOM，必须看"可见性"
       const timer = setInterval(() => {
         n++;
+
+        // ★ 权威信号：番茄发布接口的返回（net-hook 截获）。有结果就以它为准，最可靠。
+        if (netPublishResult) {
+          const r = netPublishResult;
+          clearInterval(timer);
+          if (r.ok) { setStatus("✅ 发布接口确认成功", "success"); resolve(true); }
+          else { setStatus("❌ 发布接口失败：" + (r.message || ("code=" + r.code)), "error"); resolve(false); }
+          return;
+        }
+
         const onManage = /\/main\/writer\/chapter-manage\/\d+/.test(location.href);
         const leftPublish = !/\/publish/.test(location.href); // 已离开发布页 = 提交成功
         const successToast = visible(document.querySelector(SEL.successToast));
@@ -629,6 +648,7 @@
     const primaries = [...footer.querySelectorAll("button.arco-btn-primary")];
     let btn = primaries.find((b) => (b.textContent || "").trim().includes("确认发布")) || primaries[0];
     if (!btn) throw new Error("未找到『确认发布』按钮");
+    netPublishResult = null; // 清空，只采信本次确认发布触发的接口结果
     // 三管齐下确保触发：完整鼠标序列 + 点内层 span + 原生 click
     realClick(btn);
     const span = btn.querySelector("span");

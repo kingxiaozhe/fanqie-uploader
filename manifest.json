@@ -39,6 +39,14 @@
       ],
       "js": ["content/publisher.js"],
       "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://fanqienovel.com/main/writer/*/publish*"
+      ],
+      "js": ["content/net-hook.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
     }
   ]
 }
