@@ -168,7 +168,11 @@
       return;
     }
 
-    await delay(800); // 开下一个发布页前稍候，节奏更稳（受"操作节奏"倍率影响）
+    // 开下一个发布页前的间隔：拟人随机化（默认开），避免每章固定间隔被识别为工具
+    const human = session.settings?.humanize !== false;
+    const waitMs = human ? (3000 + Math.floor(Math.random() * 9000)) : 800; // 3~12 秒随机
+    if (human) setIndicator(`⏳ 拟人等待 ${Math.round(waitMs / 1000)}s 后发下一章…`, "info");
+    await delay(waitMs);
     awaitingTaskId = task.id;
     chrome.runtime.sendMessage({
       type: "OPEN_PUBLISH_TAB",

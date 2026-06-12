@@ -19,6 +19,12 @@
   let dialogHandled = false;  // 发布设置对话框是否已处理（防重复）
   let submitted = false;      // 是否已点"下一步"创建了章节（失败后据此决定能否重试，防重复发布）
   let paceFactor = 1;         // 操作节奏倍率（>1 更慢，降低出错率），来自设置
+  let humanize = true;        // 拟人随机延迟（降低被识别为工具的概率）
+
+  // 随机整数 [min,max]
+  function rand(min, max) { return Math.floor(min + Math.random() * (max - min + 1)); }
+  // 拟人抖动：在基准毫秒上叠加 ±40% 随机（关闭则原样返回）
+  function jitter(ms) { return humanize ? ms * (0.8 + Math.random() * 0.6) : ms; }
   let statusEl = null;        // 页面顶部状态横幅
   const DEBUG = false;        // 调试模式：true=失败保留标签页不重试；正式批量请保持 false
 
@@ -127,6 +133,7 @@
       const { upload_session } = await chrome.storage.local.get("upload_session");
       currentSettings = upload_session?.settings || {};
       paceFactor = currentSettings.pace || 1; // 操作节奏：放慢所有 delay
+      humanize = currentSettings.humanize !== false; // 拟人随机延迟，默认开
 
       if (await stopRequested()) return abortByStop(task, sessionId);
       setStatus("⏳ 等待编辑器加载…");
@@ -234,7 +241,9 @@
     for (const ch of text) {
       setNativeValue(el, el.value + ch);
       el.dispatchEvent(new Event("input", { bubbles: true }));
-      await delay(20);
+      // 逐字输入随机间隔：开启拟人时 30~120ms 不等，模拟真人手速；偶尔"停顿"
+      await new Promise((r) => setTimeout(r, (humanize ? rand(30, 120) : 20) * paceFactor));
+      if (humanize && Math.random() < 0.05) await new Promise((r) => setTimeout(r, rand(250, 600)));
     }
     el.dispatchEvent(new Event("change", { bubbles: true }));
   }
@@ -696,6 +705,6 @@
   }
 
   function delay(ms) {
-    return new Promise((r) => setTimeout(r, ms * paceFactor));
+    return new Promise((r) => setTimeout(r, jitter(ms) * paceFactor));
   }
 })();
