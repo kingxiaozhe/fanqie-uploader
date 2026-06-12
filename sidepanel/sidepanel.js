@@ -32,6 +32,26 @@ $("retryFailed").addEventListener("click", async () => {
   $("retryFailed").disabled = true;
 });
 
+// #7 导出发布报告（CSV，可用 Excel 打开对账）
+$("exportReport").addEventListener("click", async () => {
+  const { upload_session: s } = await chrome.storage.local.get("upload_session");
+  if (!s || !s.tasks?.length) { alert("暂无任务可导出"); return; }
+  const label = (st) => (st === "uploaded" ? "已发布" : st === "failed" ? "失败" : "待发布");
+  const esc = (v) => `"${String(v == null ? "" : v).replace(/"/g, '""')}"`;
+  const head = "章节号,标题,状态,计划发布时间,字数\n";
+  const body = s.tasks.map((t) =>
+    [t.chapterNumber, t.title, label(t.status), t.publishTime && t.publishTime !== "now" ? t.publishTime : "立即/未排", t.wordCount || ""]
+      .map(esc).join(",")
+  ).join("\n");
+  const blob = new Blob(["﻿" + head + body], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `发布报告_${s.folderName || "novel"}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
 function render(session) {
   const list = $("list");
   if (!session || !session.tasks?.length) {

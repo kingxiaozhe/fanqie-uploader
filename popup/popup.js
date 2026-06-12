@@ -163,11 +163,13 @@ function render() {
     row.innerHTML = `
       <input type="checkbox" ${t.selected ? "checked" : ""} data-i="${i}" />
       <span class="title" title="${escapeHtml(t.title)}">第${t.chapterNumber || "?"}章 · ${escapeHtml(t.title)}</span>
-      <span class="meta">${t.wordCount}字</span>`;
-    row.querySelector("input").addEventListener("change", (e) => {
+      <span class="meta">${t.wordCount}字</span>
+      <button class="edit" data-i="${i}" title="预览/编辑" style="border:none;background:none;cursor:pointer;font-size:14px;padding:0 4px;">✏️</button>`;
+    row.querySelector('input[type="checkbox"]').addEventListener("change", (e) => {
       tasks[+e.target.dataset.i].selected = e.target.checked;
       updateCount();
     });
+    row.querySelector(".edit").addEventListener("click", (e) => openEditor(+e.currentTarget.dataset.i));
     list.appendChild(row);
   });
   updateCount();
@@ -218,6 +220,35 @@ function renderPreview() {
 function fmtDT(d) {
   const p = (n) => String(n).padStart(2, "0");
   return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+// #6 章节预览/编辑：弹层里改标题/正文，保存回 tasks（发前纠错，避免解析错了直接发）
+function openEditor(i) {
+  const t = tasks[i];
+  if (!t) return;
+  const mask = document.createElement("div");
+  mask.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:100000;display:flex;align-items:center;justify-content:center;";
+  mask.innerHTML = `
+    <div style="background:var(--bg,#fff);color:inherit;width:92%;max-height:86%;border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:8px;box-shadow:0 8px 30px rgba(0,0,0,.3);">
+      <div style="font-weight:600;">✏️ 编辑第${t.chapterNumber || "?"}章</div>
+      <input id="ed-title" value="${escapeHtml(t.title)}" style="font:inherit;padding:6px 8px;border:1px solid #ccc;border-radius:6px;" />
+      <textarea id="ed-content" style="font:13px/1.6 system-ui;flex:1;min-height:240px;padding:8px;border:1px solid #ccc;border-radius:6px;resize:vertical;">${escapeHtml(t.content)}</textarea>
+      <div style="display:flex;justify-content:flex-end;gap:8px;">
+        <button id="ed-cancel" class="ghost">取消</button>
+        <button id="ed-save">保存</button>
+      </div>
+    </div>`;
+  document.body.appendChild(mask);
+  const close = () => mask.remove();
+  mask.addEventListener("click", (e) => { if (e.target === mask) close(); });
+  mask.querySelector("#ed-cancel").addEventListener("click", close);
+  mask.querySelector("#ed-save").addEventListener("click", () => {
+    t.title = mask.querySelector("#ed-title").value.trim() || t.title;
+    t.content = mask.querySelector("#ed-content").value;
+    t.wordCount = t.content.replace(/\s/g, "").length;
+    close();
+    render();
+  });
 }
 
 async function onStart() {
