@@ -3,13 +3,21 @@
 <head>
   <meta charset="UTF-8" />
   <style>
-    :root { color-scheme: light dark; }
+    :root {
+      color-scheme: light dark;
+      --bg: #fff; --fg: #1a1a1a; --border: #e0e0e0; --line: #f0f0f0;
+      --muted: #888; --accent: #3498db;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #1e1f22; --fg: #e6e6e6; --border: #3a3d42; --line: #2a2c30; --muted: #9aa0a6; }
+    }
     body {
       width: 360px; margin: 0; padding: 16px;
       font: 14px/1.5 system-ui, sans-serif;
+      background: var(--bg); color: var(--fg);
     }
     h1 { font-size: 16px; margin: 0 0 4px; }
-    .sub { color: #888; font-size: 12px; margin-bottom: 12px; }
+    .sub { color: var(--muted); font-size: 12px; margin-bottom: 12px; }
     button {
       font: inherit; padding: 8px 14px; border-radius: 8px; cursor: pointer;
       border: 1px solid #3498db; background: #3498db; color: #fff;
@@ -17,17 +25,17 @@
     button.ghost { background: transparent; color: #3498db; }
     button:disabled { opacity: .5; cursor: not-allowed; }
     .row { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
-    #list { max-height: 280px; overflow: auto; border: 1px solid #e0e0e0; border-radius: 8px; }
-    .item { display: flex; gap: 8px; padding: 6px 10px; border-bottom: 1px solid #f0f0f0; align-items: center; }
+    #list { max-height: 280px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; }
+    .item { display: flex; gap: 8px; padding: 6px 10px; border-bottom: 1px solid var(--line); align-items: center; }
     .item:last-child { border-bottom: none; }
     .item .title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .item .meta { color: #999; font-size: 11px; }
+    .item .meta { color: var(--muted); font-size: 11px; }
     .empty { padding: 24px; text-align: center; color: #aaa; }
-    .bar { display: flex; justify-content: space-between; align-items: center; margin: 10px 0; font-size: 12px; color: #666; }
-    fieldset { border: 1px solid #e0e0e0; border-radius: 8px; margin: 0 0 10px; padding: 8px 12px; }
-    legend { font-size: 12px; color: #888; padding: 0 4px; }
+    .bar { display: flex; justify-content: space-between; align-items: center; margin: 10px 0; font-size: 12px; color: var(--muted); }
+    fieldset { border: 1px solid var(--border); border-radius: 8px; margin: 0 0 10px; padding: 8px 12px; }
+    legend { font-size: 12px; color: var(--muted); padding: 0 4px; }
     .opt { display: block; font-size: 13px; margin: 3px 0; cursor: pointer; }
-    .cfg { font-size: 12px; color: #666; margin: 4px 0 4px 20px; }
+    .cfg { font-size: 12px; color: var(--muted); margin: 4px 0 4px 20px; }
     .cfg input[type="number"], .cfg input[type="time"], .cfg input[type="datetime-local"] { font: inherit; }
   </style>
 </head>
