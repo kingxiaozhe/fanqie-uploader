@@ -382,6 +382,19 @@
         }
         if (secondaryHandled) return; // 刚点了二次确认，等下一轮再判结果
 
+        // 自愈：发布弹窗还开着且等了较久——大概率"确认发布"那下没生效，自动重点
+        if (!dialogClosed && (n === 8 || n === 18 || n === 30)) {
+          const footer = document.querySelector(SEL.publishDialog + " .arco-modal-footer");
+          const again = footer && [...footer.querySelectorAll("button.arco-btn-primary")]
+            .find((b) => (b.textContent || "").includes("确认发布"));
+          if (again) {
+            realClick(again);
+            try { again.click(); } catch (_) {}
+            setStatus("🔁 弹窗未关，重点「确认发布」…");
+            return;
+          }
+        }
+
         // ⚠️ "弹窗关闭"判成功必须同时满足：页面上没有任何可见弹窗 + 持续一段时间。
         // 否则"发布弹窗关→二次确认弹出"的空档会被误判成功，提前开下一章的 tab。
         const anyModalVisible = [...document.querySelectorAll(".arco-modal")].some(visible);
@@ -393,7 +406,14 @@
         if (n >= 40) {
           // 超时前最后兜底：已离开发布页 或 弹窗已不可见 = 其实成功了
           const ok2 = onManage || leftPublish || dialogClosed;
-          setStatus(ok2 ? "✅ 超时兜底判定为成功" : "⌛ 等结果超时（发布弹窗仍打开）", ok2 ? "success" : "error");
+          if (!ok2) {
+            // 诊断现场：把 URL 和当前可见弹窗记下来，便于定位是哪个弹窗挡住了
+            const mods = [...document.querySelectorAll(".arco-modal")].filter(visible)
+              .map((m) => m.className.split(" ").slice(0, 2).join("."));
+            setStatus("⌛ 超时 url=" + location.pathname.slice(-30) + " 可见弹窗=" + (mods.join("|") || "无"), "error");
+          } else {
+            setStatus("✅ 超时兜底判定为成功", "success");
+          }
           clearInterval(timer);
           resolve(ok2);
         }
