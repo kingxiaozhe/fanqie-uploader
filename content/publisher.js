@@ -373,13 +373,19 @@
         }
 
         // 确认发布后可能弹"二次确认"小窗（超7天/夜间发文等）——点掉可见小窗的主按钮继续
+        let secondaryHandled = false;
         for (const m of document.querySelectorAll(".arco-modal")) {
           if (m.classList.contains("publish-confirm-container-new")) continue;
           if (!visible(m)) continue;
           const p = m.querySelector("button.arco-btn-primary");
-          if (p) { realClick(p); setStatus("↪️ 处理二次确认弹窗"); break; }
+          if (p) { realClick(p); setStatus("↪️ 处理二次确认弹窗"); secondaryHandled = true; break; }
         }
-        if (onManage || leftPublish || successToast || (dialogClosed && n >= 2)) {
+        if (secondaryHandled) return; // 刚点了二次确认，等下一轮再判结果
+
+        // ⚠️ "弹窗关闭"判成功必须同时满足：页面上没有任何可见弹窗 + 持续一段时间。
+        // 否则"发布弹窗关→二次确认弹出"的空档会被误判成功，提前开下一章的 tab。
+        const anyModalVisible = [...document.querySelectorAll(".arco-modal")].some(visible);
+        if (onManage || leftPublish || successToast || (dialogClosed && !anyModalVisible && n >= 4)) {
           clearInterval(timer);
           resolve(true);
           return;
