@@ -222,9 +222,10 @@
     const task = session.tasks.find((x) => x.id === taskId);
 
     // 防重复关键：若发布器已点过"下一步"(submitted)，章节草稿很可能已创建——
-    // 此时绝不重试（重试会再建一个=重复），直接标记并跳过，交给人工/同步处理。
-    if (submitted || (task && (await isChapterAlreadyPublished(task)))) {
-      if (task) task.status = submitted ? "failed" : "uploaded";
+    // 此时绝不重试（重试会再建一个=重复）。能在列表里查到的标记"已发"，查不到的标记"失败"。
+    const exists = task && (await isChapterAlreadyPublished(task));
+    if (submitted || exists) {
+      if (task) task.status = exists ? "uploaded" : "failed";
       console.log(`⏭️ 第${session.currentIndex + 1}章不重试(submitted=${!!submitted})，避免重复:`, task?.title);
       setIndicator(`⏭️ 第 ${session.currentIndex + 1} 章已创建/已存在，跳过（防重复）`, "warning");
       session.currentIndex += 1;

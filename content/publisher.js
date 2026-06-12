@@ -350,35 +350,43 @@
   function waitForPublishResult() {
     return new Promise((resolve) => {
       let n = 0;
+      const visible = (el) => !!el && el.offsetParent !== null; // Arco 关闭后壳子可能留在 DOM，必须看"可见性"
       const timer = setInterval(() => {
         n++;
         const onManage = /\/main\/writer\/chapter-manage\/\d+/.test(location.href);
-        const successToast = document.querySelector(SEL.successToast);
+        const leftPublish = !/\/publish/.test(location.href); // 已离开发布页 = 提交成功
+        const successToast = visible(document.querySelector(SEL.successToast));
+        const dialogClosed = !visible(document.querySelector(SEL.publishDialog));
         const errToast = document.querySelector(SEL.errorToast);
-        const dialogGone = !document.querySelector(SEL.publishDialog);
 
-        if (errToast && (errToast.textContent || "").trim().length > 3) {
-          setStatus("❌ 发布报错：" + errToast.textContent.trim(), "error");
-          clearInterval(timer);
-          resolve(false);
-          return;
+        // 错误提示：仅当发布弹窗还开着、且不是良性提示(错别字/忽略替换等)时才判失败。
+        // 页面上无关的报错气泡（番茄自家统计等）不能把已成功的发布误判成失败。
+        if (errToast && visible(errToast) && !dialogClosed) {
+          const t = (errToast.textContent || "").trim();
+          const benign = ["错别字", "忽略", "替换"].some((k) => t.includes(k));
+          if (!benign && t.length > 3) {
+            setStatus("❌ 发布报错：" + t, "error");
+            clearInterval(timer);
+            resolve(false);
+            return;
+          }
         }
 
-        // 确认发布后可能弹"二次确认"小窗（超7天/夜间发文等）——点掉它的主按钮继续
+        // 确认发布后可能弹"二次确认"小窗（超7天/夜间发文等）——点掉可见小窗的主按钮继续
         for (const m of document.querySelectorAll(".arco-modal")) {
           if (m.classList.contains("publish-confirm-container-new")) continue;
+          if (!visible(m)) continue;
           const p = m.querySelector("button.arco-btn-primary");
           if (p) { realClick(p); setStatus("↪️ 处理二次确认弹窗"); break; }
         }
-        if (onManage || successToast || (dialogGone && n >= 2)) {
+        if (onManage || leftPublish || successToast || (dialogClosed && n >= 2)) {
           clearInterval(timer);
           resolve(true);
           return;
         }
         if (n >= 40) {
-          // 超时前最后再确认一次：已跳回章节管理页 或 发布弹窗已消失 = 其实成功了
-          const ok2 = /\/main\/writer\/chapter-manage\/\d+/.test(location.href) ||
-            !document.querySelector(SEL.publishDialog);
+          // 超时前最后兜底：已离开发布页 或 弹窗已不可见 = 其实成功了
+          const ok2 = onManage || leftPublish || dialogClosed;
           setStatus(ok2 ? "✅ 超时兜底判定为成功" : "⌛ 等结果超时（发布弹窗仍打开）", ok2 ? "success" : "error");
           clearInterval(timer);
           resolve(ok2);
