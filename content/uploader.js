@@ -12,6 +12,7 @@
 
   let session = null;     // { sessionId, tasks, settings, currentIndex, retries, status }
   let indicator = null;   // 右上角状态浮标
+  let indicatorText = null; // 浮标里的文本区（按钮在旁边）
   let busy = false;
   let awaitingTaskId = null; // 当前正在等待结果的章节 id（防重复推进 + 看门狗用）
   let watchdog = null;       // 看门狗计时器：本章超时无响应则按失败处理
@@ -351,7 +352,6 @@
   }
 
   // ---------- 状态浮标（带停止按钮）----------
-  let indicatorText = null;
   function createIndicator() {
     if (indicator) return;
     indicator = document.createElement("div");
