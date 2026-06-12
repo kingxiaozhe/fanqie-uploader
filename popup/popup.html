@@ -71,7 +71,11 @@
         <option value="2.4">很慢</option>
       </select>
     </label>
-    <label class="opt"><input type="checkbox" id="humanize" checked /> 🎭 拟人随机延迟（章节间隔/输入随机，降低被识别）</label>
+    <label class="opt"><input type="checkbox" id="humanize" checked /> 🎭 拟人随机延迟（输入抖动，降低被识别）</label>
+    <div class="cfg">章节间隔随机
+      <input type="number" id="gapMin" value="5" min="0" max="600" style="width:52px" /> ~
+      <input type="number" id="gapMax" value="20" min="1" max="600" style="width:52px" /> 秒
+    </div>
     <label class="opt"><input type="checkbox" id="autoRetry" checked /> 失败自动重试（最多 3 次）</label>
     <label class="opt"><input type="checkbox" id="fullDetection" checked /> 发布用「全面检测」（每章 2 次额度；取消则仅基础检测）</label>
     <label class="opt">是否使用 AI（声明）：
