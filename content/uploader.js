@@ -48,12 +48,33 @@
     detectAndAct();
   }
 
-  function detectAndAct() {
+  let resumePrompted = false;
+  async function detectAndAct() {
     if (!session || session.status === "completed") return;
-    if (/\/main\/writer\/chapter-manage\/\d+/.test(location.href)) {
-      startUpload();
-    } else {
+    if (!/\/main\/writer\/chapter-manage\/\d+/.test(location.href)) {
       setIndicator("📚 请进入你要上传的小说『章节管理』页面", "info");
+      return;
+    }
+    if (busy) return;
+
+    // #5 断点续传：区分"刚点开始"和"重进页面"
+    const { upload_autostart } = await chrome.storage.local.get("upload_autostart");
+    if (upload_autostart) {
+      await chrome.storage.local.remove("upload_autostart"); // 消费一次，本批自动跑
+      startUpload();
+      return;
+    }
+    // 没有自动开始标记 = 用户重新进了页面：若还有没发完的，询问是否续传
+    const pending = session.tasks.filter((t) => t.status !== "uploaded" && t.status !== "failed").length;
+    if (pending > 0 && !resumePrompted) {
+      resumePrompted = true;
+      setIndicator(`↩️ 上次还有 ${pending} 章未发`, "warning");
+      if (confirm(`检测到上次还有 ${pending} 章未发布，是否继续上传？`)) {
+        await chrome.storage.local.remove("upload_control");
+        startUpload();
+      } else {
+        setIndicator("⏸ 已暂停。重新进入本页或点扩展可继续", "info");
+      }
     }
   }
 

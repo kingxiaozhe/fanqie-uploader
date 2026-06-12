@@ -88,6 +88,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 async function handleStartUpload(data, sendResponse) {
   const { tasks, sessionId, settings } = data;
   await chrome.storage.local.remove("upload_control"); // 清除上次的"停止"标记
+  await chrome.storage.local.set({ upload_autostart: true }); // 标记"刚点开始"，让调度器自动跑而非询问续传
   await chrome.storage.local.set({
     upload_session: {
       sessionId,

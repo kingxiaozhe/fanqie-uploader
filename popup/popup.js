@@ -177,6 +177,47 @@ function render() {
 function updateCount() {
   const sel = tasks.filter((t) => t.selected).length;
   $("count").textContent = `已选 ${sel} / 共 ${tasks.length} 章`;
+  renderPreview();
+}
+
+// #4 排期预览：按当前设置算出每章发布时间（与 uploader.computePublishTime 同算法）
+function renderPreview() {
+  const box = $("previewBox");
+  const s = collectSettings();
+  const selected = tasks.filter((t) => t.selected);
+  if (!selected.length || s.publishMode === "immediate") {
+    box.hidden = true;
+    return;
+  }
+  box.hidden = false;
+  let baseNote = "";
+  let startDate;
+  if (s.publishMode === "auto") {
+    if (s.startDateMode === "fixed" && s.startDate) startDate = new Date(s.startDate + "T00:00:00");
+    else { startDate = new Date(); startDate.setDate(startDate.getDate() + 1); startDate.setHours(0, 0, 0, 0); }
+    if (s.startDateMode === "auto") baseNote = "（自动接续：实际起始日以发布页已排期为准，下表按「明天」估算）";
+  }
+  const rows = selected.map((t, i) => {
+    let when;
+    if (s.publishMode === "custom" && s.customStart) {
+      const d = new Date(s.customStart); d.setHours(d.getHours() + i); when = fmtDT(d);
+    } else {
+      const N = Math.max(1, s.dailyChapters || 1);
+      const [hh, mm] = (s.startHour || "06:00").split(":").map(Number);
+      const step = Math.floor(1440 / N);
+      const d = new Date(startDate);
+      d.setDate(d.getDate() + Math.floor(i / N));
+      d.setMinutes(hh * 60 + mm + (i % N) * step);
+      when = fmtDT(d) + (s.minuteJitter ? ` ±${s.minuteJitter}分` : "");
+    }
+    return `<div>第${t.chapterNumber || "?"}章 · ${escapeHtml(t.title).slice(0, 12)} → <b>${when}</b></div>`;
+  });
+  $("preview").innerHTML = (baseNote ? `<div style="color:#f39c12;margin-bottom:4px;">${baseNote}</div>` : "") + rows.join("");
+}
+
+function fmtDT(d) {
+  const p = (n) => String(n).padStart(2, "0");
+  return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
 async function onStart() {
