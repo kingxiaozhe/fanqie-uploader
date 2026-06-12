@@ -284,12 +284,22 @@
 
     return new Promise((resolve) => {
       let n = 0;
+      let detectTicks = 0;
       const timer = setInterval(async () => {
         n++;
         // 成功标志：跳转回章节管理页
         if (/\/main\/writer\/chapter-manage\/\d+/.test(location.href)) {
           clearInterval(timer);
           resolve(true);
+          return;
+        }
+
+        // 番茄"正在为你检测风险内容"阶段可能较久——耐心等（要多久等多久）：
+        // 冻结超时计数、不重点下一步，等检测结束弹出"发布设置"再继续
+        if ((document.body.textContent || "").includes("正在为你检测风险内容")) {
+          n--; // 冻结超时
+          detectTicks++;
+          if (detectTicks % 5 === 1) setStatus("🛡️ 番茄正在检测风险内容，耐心等待…（" + detectTicks + "s）");
           return;
         }
 

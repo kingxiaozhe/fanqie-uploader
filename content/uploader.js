@@ -16,7 +16,7 @@
   let busy = false;
   let awaitingTaskId = null; // 当前正在等待结果的章节 id（防重复推进 + 看门狗用）
   let watchdog = null;       // 看门狗计时器：本章超时无响应则按失败处理
-  const CHAPTER_TIMEOUT = 180000; // 单章最长等待 3 分钟
+  const CHAPTER_TIMEOUT = 300000; // 单章最长等待 5 分钟（风险检测可能较久 + 慢节奏留余量）
 
   init();
 
