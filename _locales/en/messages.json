@@ -1,0 +1,10 @@
+{
+  "appName": {
+    "message": "Fanqie Novel Batch Publisher",
+    "description": "Extension name"
+  },
+  "appDesc": {
+    "message": "Pick a local chapters folder and batch-publish to the Fanqie Novel author console, with smart scheduling and randomized intervals — no more pasting chapters one by one.",
+    "description": "Extension description"
+  }
+}

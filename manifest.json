@@ -1,8 +1,9 @@
 {
   "manifest_version": 3,
-  "name": "番茄小说批量发布助手",
+  "name": "__MSG_appName__",
   "version": "1.0.0",
-  "description": "选择本地章节文件夹，一键批量发布到番茄小说作者后台，支持智能定时排期与随机间隔，省去逐章手动复制粘贴。",
+  "description": "__MSG_appDesc__",
+  "default_locale": "zh_CN",
   "permissions": ["storage", "tabs", "notifications", "sidePanel"],
   "host_permissions": ["https://fanqienovel.com/*"],
   "side_panel": { "default_path": "sidepanel/sidepanel.html" },
