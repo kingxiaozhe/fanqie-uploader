@@ -46,7 +46,17 @@
   XMLHttpRequest.prototype.send = function (...a) {
     try {
       if (typeof this.__fqUrl === "string" && this.__fqUrl.includes(TARGET)) {
-        this.addEventListener("loadend", () => emit(this.status, this.responseText));
+        this.addEventListener("loadend", () => {
+          // ⚠️ responseType 为 json/blob 时读 responseText 会抛异常（axios 常设 json）
+          let body = "";
+          try {
+            const rt = this.responseType;
+            if (rt === "" || rt === "text") body = this.responseText;
+            else if (rt === "json") body = JSON.stringify(this.response);
+            else body = ""; // blob/arraybuffer 等，忽略
+          } catch (_) {}
+          emit(this.status, body);
+        });
       }
     } catch (_) {}
     return send.apply(this, a);
