@@ -57,11 +57,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           sendResponse({ success: true });
           break;
 
-        // 内容脚本转发的日志，集中打印到后台控制台（调试用）
-        case "LOG":
+        // 内容脚本转发的日志：打印到后台控制台 + 落盘到 storage（供一键导出排查）
+        case "LOG": {
           console.log(`[${msg.src || "cs"}]`, msg.text);
+          await appendLog(msg.src || "cs", msg.text);
           sendResponse({ success: true });
           break;
+        }
 
         case "NOTIFY":
           chrome.notifications.create({
@@ -84,10 +86,21 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   return true; // 异步响应
 });
 
+// ---- 运行日志：落盘到 storage（最多 1500 条），供进度面板一键导出 ----
+async function appendLog(src, text) {
+  try {
+    const { fq_logs = [] } = await chrome.storage.local.get("fq_logs");
+    fq_logs.push({ t: Date.now(), src, text });
+    if (fq_logs.length > 1500) fq_logs.splice(0, fq_logs.length - 1500);
+    await chrome.storage.local.set({ fq_logs });
+  } catch (_) {}
+}
+
 // ---- 开始上传：把会话存进 storage，打开番茄作者后台 ----
 async function handleStartUpload(data, sendResponse) {
   const { tasks, sessionId, settings } = data;
   await chrome.storage.local.remove("upload_control"); // 清除上次的"停止"标记
+  await appendLog("system", `▶▶ 新批次开始：${tasks?.length || 0} 章 | 设置 ${JSON.stringify(settings || {})}`);
   await chrome.storage.local.set({ upload_autostart: true }); // 标记"刚点开始"，让调度器自动跑而非询问续传
   await chrome.storage.local.set({
     upload_session: {

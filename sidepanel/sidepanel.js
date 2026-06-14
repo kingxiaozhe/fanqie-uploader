@@ -52,6 +52,24 @@ $("exportReport").addEventListener("click", async () => {
   URL.revokeObjectURL(url);
 });
 
+// 一键导出运行日志（.txt），给开发者排查用
+$("exportLog").addEventListener("click", async () => {
+  const { fq_logs = [] } = await chrome.storage.local.get("fq_logs");
+  if (!fq_logs.length) { alert("暂无日志"); return; }
+  const pad = (n) => String(n).padStart(2, "0");
+  const fmt = (t) => { const d = new Date(t); return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`; };
+  const lines = fq_logs.map((e) => `${fmt(e.t)} [${e.src}] ${e.text}`).join("\n");
+  const ua = navigator.userAgent;
+  const header = `番茄发布助手 运行日志\n导出时间: ${new Date().toLocaleString()}\nUA: ${ua}\n共 ${fq_logs.length} 条\n${"=".repeat(40)}\n`;
+  const blob = new Blob([header + lines], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `运行日志_${Date.now()}.txt`;
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
 function render(session) {
   const list = $("list");
   if (!session || !session.tasks?.length) {

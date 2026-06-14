@@ -443,6 +443,7 @@
   }
 
   function setIndicator(text, level = "info") {
+    try { chrome.runtime.sendMessage({ type: "LOG", src: "uploader", text }); } catch (_) {} // 进运行日志
     if (!indicator) return;
     const colors = { info: "#3498db", success: "#27ae60", warning: "#f39c12", error: "#e74c3c" };
     indicatorText.textContent = text;
