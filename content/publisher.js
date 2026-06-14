@@ -352,7 +352,7 @@
             await handlePublishDialog();        // 设 AI/定时 + 点确认发布
             resolve(await waitForPublishResult()); // 判断是否真的发布成功
           } catch (e) {
-            console.error("❌ 处理发布对话框失败:", e);
+            dlog("处理发布对话框失败：" + (e.message || e));
             resolve(false);
           }
           return;
@@ -384,7 +384,8 @@
   function waitForPublishResult() {
     return new Promise((resolve) => {
       let n = 0;
-      const visible = (el) => !!el && el.offsetParent !== null; // Arco 关闭后壳子可能留在 DOM，必须看"可见性"
+      // 可见性判断：用 getBoundingClientRect（对 position:fixed 的弹窗/toast 也正确；offsetParent 对 fixed 恒为 null 会误判）
+      const visible = (el) => { if (!el) return false; const r = el.getBoundingClientRect(); return r.width > 1 && r.height > 1; };
       const timer = setInterval(() => {
         n++;
 
