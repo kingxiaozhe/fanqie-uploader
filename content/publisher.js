@@ -90,6 +90,12 @@
     statusEl.textContent = text;
   }
 
+  // 诊断日志：只进运行日志（不弹横幅），用于记录每一步的细节，让一份日志就能定位问题
+  function dlog(text) {
+    console.log("[publisher·d]", text);
+    try { chrome.runtime.sendMessage({ type: "LOG", src: "publisher", text: "· " + text }); } catch (_) {}
+  }
+
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (msg.type === "FILL_CHAPTER") {
       fillChapter(msg.data).then(() => sendResponse({ success: true }));
@@ -106,7 +112,7 @@
   window.addEventListener("message", (e) => {
     if (e.source === window && e.data && e.data.__fqNet && e.data.type === "publish-result") {
       netPublishResult = e.data;
-      console.log("🔌 收到发布接口结果:", e.data);
+      dlog(`🔌 发布接口返回 ok=${e.data.ok} code=${e.data.code} status=${e.data.status} msg=${e.data.message || ""}`);
     }
   });
 
@@ -123,8 +129,7 @@
         setTimeout(() => requestTaskWithRetry(attempt + 1), 500); // 任务可能还没存好，重试
       } else {
         // 正常情况：本页不是自动上传打开的（如草稿创建后重载的二次注入、或人工手动编辑页）
-        // 此时 publisher 不做任何事，静默即可，避免在 Errors 面板里显示成"错误"
-        console.log("ℹ️ 本页无待发任务，发布器待命（非自动上传页面，正常）");
+        dlog("本页无待发任务，发布器待命（非自动上传页面，正常）");
       }
     });
   }
@@ -135,7 +140,7 @@
     currentTask = task;
     dialogHandled = false;
     submitted = false;
-    console.log("📝 开始填充章节:", task.title, "| 发布时间:", task.publishTime || "now");
+    dlog(`▼ 开始：第${task.chapterNumber}章「${task.title}」 正文${(task.content || "").length}字 发布时间=${task.publishTime || "now"}`);
 
     try {
       // 读取本次会话设置（dryRun / detectionMode / pace 等）
@@ -241,6 +246,7 @@
     if (!titleInput) throw new Error("未找到标题输入框");
     // 去掉"第N章"前缀（章节号已单独填入）。兼容"第 56 章"这种带空格的写法，及冒号/顿号等分隔符
     const pure = task.title.replace(/^\s*第\s*\d+\s*章[\s：:、.．·\-]*/, "").trim() || task.title;
+    dlog(`填标题：章节号框${numInput ? "✓" : "✗"} 标题="${pure}"`);
     await typeInto(titleInput, pure);
   }
 
@@ -287,7 +293,7 @@
       setNativeValue(area, task.content);
       area.dispatchEvent(new Event("input", { bubbles: true }));
     }
-    console.log("✅ 正文填充完成");
+    dlog(`填正文：编辑器=${area.classList.contains("ProseMirror") ? "ProseMirror" : area.tagName} 写入后${(area.textContent || "").trim().length}字`);
   }
 
   // ---------- 提交 + 处理弹窗 + 判断成功 ----------
@@ -295,11 +301,10 @@
     // 优先专用 class，再按精确文本找，避免误点"发布设置/发布记录"等
     const clickSubmit = () => {
       const btn = query(SEL.submitButton) || findButtonByText(SEL.submitText);
-      if (btn) { realClick(btn); return true; } // 番茄按钮需完整鼠标序列，.click() 点不动
+      if (btn) { dlog(`点下一步：按钮文字="${(btn.textContent || "").trim()}"`); realClick(btn); return true; }
       return false;
     };
     if (!clickSubmit()) throw new Error("未找到提交按钮");
-    console.log("🚀 已点击提交");
 
     return new Promise((resolve) => {
       let n = 0;
