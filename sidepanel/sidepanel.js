@@ -75,9 +75,11 @@ function render(session) {
   if (!session || !session.tasks?.length) {
     list.innerHTML = '<div class="empty">暂无上传任务</div>';
     $("summary").innerHTML = "";
-    $("proj").textContent = "";
+    $("proj").textContent = "尚未开始";
+    $("pmeta").innerHTML = "";
     $("barfill").style.width = "0%";
     $("stop").disabled = true;
+    $("retryFailed").disabled = true;
     return;
   }
 
@@ -85,33 +87,36 @@ function render(session) {
   const done = tasks.filter((t) => t.status === "uploaded").length;
   const failed = tasks.filter((t) => t.status === "failed").length;
   const pending = tasks.length - done - failed;
+  const pct = Math.round((done / tasks.length) * 100);
+  const running = session.status !== "completed" && session.status !== "stopped";
 
-  $("proj").textContent = `共 ${tasks.length} 章 · 状态：${statusLabel(session.status)}`;
+  $("proj").textContent = session.folderName || `共 ${tasks.length} 章`;
   $("summary").innerHTML =
-    `<span class="chip done">✅ 完成 ${done}</span>` +
-    `<span class="chip failed">❌ 失败 ${failed}</span>` +
-    `<span class="chip pending">⏳ 待发 ${pending}</span>`;
-  $("barfill").style.width = Math.round((done / tasks.length) * 100) + "%";
+    `<div class="stat ok"><div class="n">${done}</div><div class="k">已发布</div></div>` +
+    `<div class="stat fail"><div class="n">${failed}</div><div class="k">失败</div></div>` +
+    `<div class="stat wait"><div class="n">${pending}</div><div class="k">待发布</div></div>`;
+  $("barfill").style.width = pct + "%";
+  $("pmeta").innerHTML = `<span>${pct}% · ${done}/${tasks.length}</span><span>${statusLabel(session.status)}</span>`;
 
   // 停止按钮：仅在进行中可用
-  const running = session.status !== "completed" && session.status !== "stopped";
   $("stop").disabled = !running;
-  if (running) { $("stop").textContent = "⏹ 停止上传"; }
+  if (running) $("stop").textContent = "⏹ 停止上传";
 
   // 重发按钮：有失败章节且不在运行中时可用
   $("retryFailed").disabled = !(failed > 0 && !running);
-  if (failed > 0 && !running) $("retryFailed").textContent = `🔁 重发失败章节 (${failed})`;
+  $("retryFailed").textContent = failed > 0 && !running ? `🔁 重发失败 (${failed})` : "🔁 重发失败";
 
   list.innerHTML = "";
   tasks.forEach((t, i) => {
     const row = document.createElement("div");
     row.className = "item";
-    const cur = i === session.currentIndex && running ? "▶ " : "";
+    const isCur = i === session.currentIndex && running;
+    const dot = isCur ? "run" : t.status === "uploaded" ? "ok" : t.status === "failed" ? "fail" : "wait";
     row.innerHTML =
-      `<span class="t" title="${esc(t.title)}">${cur}第${t.chapterNumber || "?"}章 · ${esc(t.title)}</span>` +
-      (t.publishTime && t.publishTime !== "now"
-        ? `<span class="time">${fmt(t.publishTime)}</span>` : "") +
-      `<span class="badge ${badgeClass(t.status)}">${badgeText(t.status)}</span>`;
+      `<span class="dot ${dot}"></span>` +
+      `<span class="t" title="${esc(t.title)}">第${t.chapterNumber || "?"}章 · ${esc(t.title)}</span>` +
+      (t.publishTime && t.publishTime !== "now" ? `<span class="time">${fmt(t.publishTime)}</span>` : "") +
+      `<span class="badge ${badgeClass(t.status)}">${isCur ? "发布中" : badgeText(t.status)}</span>`;
     list.appendChild(row);
   });
 }
@@ -120,7 +125,7 @@ function statusLabel(s) {
   return { preparing: "准备中", uploading: "上传中", completed: "已完成", stopped: "已停止" }[s] || s || "—";
 }
 function badgeClass(s) { return s === "uploaded" ? "uploaded" : s === "failed" ? "failed" : "pending"; }
-function badgeText(s) { return s === "uploaded" ? "✅ 已发" : s === "failed" ? "❌ 失败" : "⏳ 待发"; }
+function badgeText(s) { return s === "uploaded" ? "已发" : s === "failed" ? "失败" : "待发"; }
 
 function fmt(iso) {
   try {

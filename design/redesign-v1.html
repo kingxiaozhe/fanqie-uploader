@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>番茄小说批量发布助手 · UI 重设计 v1</title>
+<style>
+  /* ===== 设计 tokens ===== */
+  .ui {
+    --accent: #ff5630;
+    --accent-grad: linear-gradient(135deg, #ff7a45, #e62f1f);
+    --ok: #15a05a; --ok-bg: #e7f6ec;
+    --fail: #d83a2f; --fail-bg: #fdeae8;
+    --wait: #9a948d; --wait-bg: #f0eeec;
+    --bg: #faf8f6; --surface: #ffffff; --surface-2: #f6f3f0;
+    --text: #221f1d; --muted: #8c857d; --faint: #b4ada4;
+    --border: #ececE8; --border-strong: #e0dcd6;
+    --radius: 14px; --radius-sm: 10px;
+    font-family: "PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;
+    color: var(--text);
+  }
+  .ui.dark {
+    --ok-bg:#163325; --fail-bg:#3a1f1c; --wait-bg:#262320;
+    --bg:#141312; --surface:#1f1d1b; --surface-2:#262320;
+    --text:#f1ede8; --muted:#9b938a; --faint:#6f675f;
+    --border:#2d2a27; --border-strong:#3a3633;
+  }
+
+  body { margin:0; background:#e9e6e2; padding:40px; font-family:"PingFang SC",system-ui,sans-serif; }
+  .canvas { display:flex; gap:40px; flex-wrap:wrap; align-items:flex-start; max-width:1500px; margin:0 auto; }
+  .frame-label { font-size:13px; color:#6a655f; margin:0 0 10px 4px; font-weight:600; letter-spacing:.02em; }
+  .col { display:flex; flex-direction:column; gap:32px; }
+
+  /* ===== 通用组件 ===== */
+  .ui * { box-sizing:border-box; }
+  .popup { width:360px; background:var(--bg); border-radius:20px; overflow:hidden; box-shadow:0 20px 50px rgba(0,0,0,.18); border:1px solid var(--border); }
+  .panel { width:330px; background:var(--bg); border-radius:20px; overflow:hidden; box-shadow:0 20px 50px rgba(0,0,0,.18); border:1px solid var(--border); }
+
+  /* header */
+  .hd { display:flex; align-items:center; gap:11px; padding:16px 18px 14px; }
+  .hd img { width:34px; height:34px; border-radius:9px; }
+  .hd .t { font-size:15.5px; font-weight:700; letter-spacing:.01em; }
+  .hd .s { font-size:11.5px; color:var(--muted); margin-top:1px; }
+
+  .body { padding:4px 16px 16px; }
+
+  /* primary file zone */
+  .pick { display:flex; align-items:center; gap:12px; padding:13px 14px; background:var(--surface); border:1.5px dashed var(--border-strong); border-radius:var(--radius); cursor:pointer; transition:.15s; }
+  .pick:hover { border-color:var(--accent); }
+  .pick .ic { width:38px;height:38px;border-radius:10px; background:var(--surface-2); display:grid;place-items:center; color:var(--accent); flex:none; }
+  .pick .main { font-size:13.5px; font-weight:600; }
+  .pick .sub { font-size:11px; color:var(--muted); margin-top:2px; }
+
+  .folder-on { background:var(--surface); border:1px solid var(--border); border-style:solid; }
+
+  /* section title */
+  .sec { display:flex; align-items:center; justify-content:space-between; margin:18px 2px 8px; }
+  .sec .l { font-size:11.5px; font-weight:700; color:var(--muted); letter-spacing:.06em; text-transform:none; }
+  .sec .r { font-size:11.5px; color:var(--accent); cursor:pointer; }
+
+  /* chapter list */
+  .clist { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; max-height:158px; overflow-y:auto; }
+  .crow { display:flex; align-items:center; gap:10px; padding:9px 12px; border-bottom:1px solid var(--border); }
+  .crow:last-child { border-bottom:none; }
+  .cbx { width:17px;height:17px;border-radius:5px;border:1.5px solid var(--border-strong); flex:none; display:grid;place-items:center; }
+  .cbx.on { background:var(--accent); border-color:var(--accent); }
+  .cbx.on::after { content:"✓"; color:#fff; font-size:11px; font-weight:700; }
+  .crow .ct { flex:1; font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .crow .num { color:var(--accent); font-weight:700; }
+  .crow .wc { font-size:11px; color:var(--faint); flex:none; }
+  .crow .ed { color:var(--faint); cursor:pointer; flex:none; font-size:13px; }
+  .crow .ed:hover { color:var(--accent); }
+
+  /* settings card */
+  .card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:4px 14px; }
+  .frow { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:11px 0; border-bottom:1px solid var(--border); }
+  .frow:last-child { border-bottom:none; }
+  .frow .fl { font-size:13px; }
+  .frow .fl .hint { font-size:10.5px; color:var(--faint); margin-top:2px; }
+
+  /* segmented */
+  .seg { display:flex; background:var(--surface-2); border-radius:9px; padding:3px; gap:2px; }
+  .seg b { flex:1; text-align:center; font-size:12px; font-weight:600; color:var(--muted); padding:6px 4px; border-radius:7px; cursor:pointer; }
+  .seg b.on { background:var(--surface); color:var(--accent); box-shadow:0 1px 3px rgba(0,0,0,.1); }
+  .ui.dark .seg b.on { background:#34302c; }
+
+  /* toggle */
+  .tg { width:38px;height:22px;border-radius:11px;background:var(--border-strong); position:relative; flex:none; cursor:pointer; transition:.2s; }
+  .tg::after { content:""; position:absolute; top:2px; left:2px; width:18px;height:18px;border-radius:50%; background:#fff; transition:.2s; box-shadow:0 1px 2px rgba(0,0,0,.2); }
+  .tg.on { background:var(--accent); }
+  .tg.on::after { left:18px; }
+
+  /* mini select / number */
+  .pill { font-size:12px; font-weight:600; background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:5px 10px; color:var(--text); }
+  .num { width:46px; text-align:center; font-size:12px; font-weight:600; background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:5px 4px; }
+  .rng { font-size:12px; color:var(--muted); }
+
+  /* schedule preview */
+  .prev { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:10px 14px; font-size:12px; }
+  .prev .pr { display:flex; justify-content:space-between; padding:5px 0; color:var(--text); }
+  .prev .pr .d { color:var(--accent); font-weight:600; font-variant-numeric:tabular-nums; }
+
+  /* buttons */
+  .actions { display:flex; gap:9px; margin-top:16px; }
+  .btn { flex:1; border:none; border-radius:11px; padding:12px; font-size:14px; font-weight:700; cursor:pointer; font-family:inherit; display:flex; align-items:center; justify-content:center; gap:6px; }
+  .btn.primary { background:var(--accent-grad); color:#fff; box-shadow:0 6px 16px rgba(230,47,31,.3); }
+  .btn.ghost { flex:none; width:46px; background:var(--surface); border:1px solid var(--border); color:var(--muted); }
+  .btn.stop { flex:none; width:46px; background:var(--fail-bg); border:1px solid transparent; color:var(--fail); }
+
+  .barfoot { font-size:11px; color:var(--muted); text-align:center; margin-top:11px; }
+
+  /* ===== sidepanel ===== */
+  .stats { display:flex; gap:8px; padding:0 16px; }
+  .stat { flex:1; background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:10px 8px; text-align:center; }
+  .stat .n { font-size:22px; font-weight:800; font-variant-numeric:tabular-nums; }
+  .stat .k { font-size:10.5px; color:var(--muted); margin-top:1px; }
+  .stat.ok .n{color:var(--ok)} .stat.fail .n{color:var(--fail)} .stat.wait .n{color:var(--muted)}
+  .pbar { margin:14px 16px 4px; height:8px; border-radius:4px; background:var(--surface-2); overflow:hidden; }
+  .pbar i { display:block; height:100%; width:33%; background:var(--accent-grad); border-radius:4px; }
+  .pmeta { display:flex; justify-content:space-between; padding:0 16px; font-size:11px; color:var(--muted); }
+  .slist { margin:12px 16px; background:var(--surface); border:1px solid var(--border); border-radius:14px; overflow:hidden; }
+  .srow { display:flex; align-items:center; gap:9px; padding:9px 12px; border-bottom:1px solid var(--border); font-size:12.5px; }
+  .srow:last-child{border-bottom:none}
+  .dot { width:8px;height:8px;border-radius:50%; flex:none; }
+  .dot.ok{background:var(--ok)} .dot.run{background:var(--accent)} .dot.wait{background:var(--faint)} .dot.fail{background:var(--fail)}
+  .srow .st { flex:1; overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+  .srow .when { font-size:10.5px; color:var(--faint); font-variant-numeric:tabular-nums; }
+  .badge { font-size:10px; font-weight:600; padding:2px 7px; border-radius:7px; }
+  .badge.ok{background:var(--ok-bg);color:var(--ok)} .badge.run{background:#fff0ec;color:var(--accent)} .badge.fail{background:var(--fail-bg);color:var(--fail)} .badge.wait{background:var(--wait-bg);color:var(--muted)}
+  .ui.dark .badge.run{background:#3a241d}
+  .sactions { display:grid; grid-template-columns:1fr 1fr; gap:8px; padding:4px 16px 16px; }
+  .sbtn { border:1px solid var(--border); background:var(--surface); border-radius:10px; padding:10px; font-size:12.5px; font-weight:600; cursor:pointer; color:var(--text); font-family:inherit; }
+  .sbtn.stop { background:var(--fail); color:#fff; border-color:transparent; grid-column:1/-1; }
+  .sbtn.warn { color:#b9791b; }
+  svg{display:block}
+</style>
+</head>
+<body>
+<div class="canvas">
+
+  <!-- ============ POPUP 浅色 ============ -->
+  <div class="col">
+    <div>
+      <p class="frame-label">弹窗 Popup · 浅色</p>
+      <div class="ui popup" id="popup-light"></div>
+    </div>
+  </div>
+
+  <!-- ============ POPUP 深色 ============ -->
+  <div class="col">
+    <div>
+      <p class="frame-label">弹窗 Popup · 深色</p>
+      <div class="ui dark popup" id="popup-dark"></div>
+    </div>
+  </div>
+
+  <!-- ============ 进度面板 浅 + 深 ============ -->
+  <div class="col">
+    <div>
+      <p class="frame-label">进度面板 SidePanel · 浅色</p>
+      <div class="ui panel" id="panel-light"></div>
+    </div>
+    <div>
+      <p class="frame-label">进度面板 SidePanel · 深色</p>
+      <div class="ui dark panel" id="panel-dark"></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const ICON = "../icons/icon128.png";
+
+const popupHTML = `
+  <div class="hd">
+    <img src="${ICON}" alt="">
+    <div><div class="t">番茄小说批量发布助手</div><div class="s">整本书，一键自动发布</div></div>
+  </div>
+  <div class="body">
+
+    <div class="pick folder-on">
+      <div class="ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></div>
+      <div style="flex:1">
+        <div class="main">重生2014，发小要我命</div>
+        <div class="sub">已选 86 章 · 点击可重新选择文件夹</div>
+      </div>
+    </div>
+
+    <div class="sec"><span class="l">章节列表</span><span class="r">全选 · 已选 86/86</span></div>
+    <div class="clist">
+      <div class="crow"><div class="cbx on"></div><div class="ct"><span class="num">第97章</span> · 就是一锅端</div><div class="wc">1,884字</div><div class="ed">✎</div></div>
+      <div class="crow"><div class="cbx on"></div><div class="ct"><span class="num">第98章</span> · 收成的时候</div><div class="wc">2,977字</div><div class="ed">✎</div></div>
+      <div class="crow"><div class="cbx on"></div><div class="ct"><span class="num">第99章</span> · 灭口</div><div class="wc">3,027字</div><div class="ed">✎</div></div>
+      <div class="crow"><div class="cbx"></div><div class="ct"><span class="num">第100章</span> · 暗涌</div><div class="wc">2,830字</div><div class="ed">✎</div></div>
+    </div>
+
+    <div class="sec"><span class="l">发布设置</span></div>
+    <div class="card">
+      <div class="frow">
+        <div class="fl">发布模式</div>
+        <div class="seg" style="width:200px"><b>立即</b><b class="on">智能定时</b><b>自定义</b></div>
+      </div>
+      <div class="frow">
+        <div class="fl">每日章数 · 起始时刻<div class="hint">当天内按 24/N 平均分配</div></div>
+        <div style="display:flex;gap:6px;align-items:center"><span class="num">1</span><span class="pill">06:00</span></div>
+      </div>
+      <div class="frow">
+        <div class="fl">起始日期</div>
+        <div class="pill">自动接续已排期 ▾</div>
+      </div>
+      <div class="frow">
+        <div class="fl">操作节奏</div>
+        <div class="pill">慢一点 ▾</div>
+      </div>
+      <div class="frow">
+        <div class="fl">章节间隔随机<div class="hint">每章之间随机等待</div></div>
+        <div class="rng"><span class="num" style="width:38px">5</span> ~ <span class="num" style="width:38px">20</span> 秒</div>
+      </div>
+      <div class="frow">
+        <div class="fl">发布时间随机偏移</div>
+        <div class="rng">± <span class="num" style="width:38px">10</span> 分</div>
+      </div>
+      <div class="frow">
+        <div class="fl">本次最多发布</div>
+        <div class="rng"><span class="num">0</span> 章（0=不限）</div>
+      </div>
+      <div class="frow"><div class="fl">拟人随机延迟</div><div class="tg on"></div></div>
+      <div class="frow"><div class="fl">全面检测（每章2次额度）</div><div class="tg on"></div></div>
+      <div class="frow"><div class="fl">声明使用 AI</div><div class="pill">否 ▾</div></div>
+      <div class="frow"><div class="fl">🧪 试填模式（只填不发）</div><div class="tg"></div></div>
+    </div>
+
+    <div class="sec"><span class="l">排期预览</span><span class="r">展开 ▾</span></div>
+    <div class="prev">
+      <div class="pr"><span>第97章 · 就是一锅端</span><span class="d">06-21 06:00</span></div>
+      <div class="pr"><span>第98章 · 收成的时候</span><span class="d">06-22 06:00</span></div>
+      <div class="pr"><span>第99章 · 灭口</span><span class="d">06-23 06:00</span></div>
+    </div>
+
+    <div class="actions">
+      <button class="btn primary"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>开始发布选中 86 章</button>
+      <button class="btn stop" title="停止"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg></button>
+      <button class="btn ghost" title="进度面板"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h10M4 18h7"/></svg></button>
+    </div>
+    <div class="barfoot">设置已自动保存 · 数据仅存本地</div>
+  </div>
+`;
+
+const panelHTML = `
+  <div class="hd">
+    <img src="${ICON}" alt="">
+    <div><div class="t">上传进度</div><div class="s">重生2014，发小要我命 · 上传中</div></div>
+  </div>
+  <div class="stats">
+    <div class="stat ok"><div class="n">12</div><div class="k">已发布</div></div>
+    <div class="stat fail"><div class="n">0</div><div class="k">失败</div></div>
+    <div class="stat wait"><div class="n">74</div><div class="k">待发布</div></div>
+  </div>
+  <div class="pbar"><i></i></div>
+  <div class="pmeta"><span>14% · 12/86</span><span>⏳ 随机等待 8s 后发下一章</span></div>
+
+  <div class="slist">
+    <div class="srow"><span class="dot ok"></span><span class="st">第11章 · 看不见的牌</span><span class="when">06-20 06:00</span><span class="badge ok">已发</span></div>
+    <div class="srow"><span class="dot ok"></span><span class="st">第12章 · 软刀子</span><span class="when">06-20 18:00</span><span class="badge ok">已发</span></div>
+    <div class="srow"><span class="dot run"></span><span class="st">第13章 · 这是个局</span><span class="when"></span><span class="badge run">发布中</span></div>
+    <div class="srow"><span class="dot wait"></span><span class="st">第14章 · 入场</span><span class="when">06-22 06:00</span><span class="badge wait">待发</span></div>
+    <div class="srow"><span class="dot wait"></span><span class="st">第15章 · 这里的规矩</span><span class="when">06-23 06:00</span><span class="badge wait">待发</span></div>
+  </div>
+
+  <div class="sactions">
+    <button class="sbtn stop">⏹ 停止上传</button>
+    <button class="sbtn warn">🔁 重发失败</button>
+    <button class="sbtn">📄 导出报告</button>
+    <button class="sbtn" style="grid-column:1/-1">📥 导出运行日志</button>
+  </div>
+`;
+
+document.getElementById("popup-light").innerHTML = popupHTML;
+document.getElementById("popup-dark").innerHTML = popupHTML;
+document.getElementById("panel-light").innerHTML = panelHTML;
+document.getElementById("panel-dark").innerHTML = panelHTML;
+</script>
+</body>
+</html>

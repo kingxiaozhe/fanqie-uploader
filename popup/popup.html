@@ -1,123 +1,211 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-  <meta charset="UTF-8" />
-  <style>
-    :root {
-      color-scheme: light dark;
-      --bg: #fff; --fg: #1a1a1a; --border: #e0e0e0; --line: #f0f0f0;
-      --muted: #888; --accent: #3498db;
-    }
-    @media (prefers-color-scheme: dark) {
-      :root { --bg: #1e1f22; --fg: #e6e6e6; --border: #3a3d42; --line: #2a2c30; --muted: #9aa0a6; }
-    }
-    body {
-      width: 360px; margin: 0; padding: 16px;
-      font: 14px/1.5 system-ui, sans-serif;
-      background: var(--bg); color: var(--fg);
-    }
-    h1 { font-size: 16px; margin: 0 0 4px; }
-    .sub { color: var(--muted); font-size: 12px; margin-bottom: 12px; }
-    button {
-      font: inherit; padding: 8px 14px; border-radius: 8px; cursor: pointer;
-      border: 1px solid #3498db; background: #3498db; color: #fff;
-    }
-    button.ghost { background: transparent; color: #3498db; }
-    button:disabled { opacity: .5; cursor: not-allowed; }
-    .row { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
-    #list { max-height: 280px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; }
-    .item { display: flex; gap: 8px; padding: 6px 10px; border-bottom: 1px solid var(--line); align-items: center; }
-    .item:last-child { border-bottom: none; }
-    .item .title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .item .meta { color: var(--muted); font-size: 11px; }
-    .empty { padding: 24px; text-align: center; color: #aaa; }
-    .bar { display: flex; justify-content: space-between; align-items: center; margin: 10px 0; font-size: 12px; color: var(--muted); }
-    fieldset { border: 1px solid var(--border); border-radius: 8px; margin: 0 0 10px; padding: 8px 12px; }
-    legend { font-size: 12px; color: var(--muted); padding: 0 4px; }
-    .opt { display: block; font-size: 13px; margin: 3px 0; cursor: pointer; }
-    .cfg { font-size: 12px; color: var(--muted); margin: 4px 0 4px 20px; }
-    .cfg input[type="number"], .cfg input[type="time"], .cfg input[type="datetime-local"] { font: inherit; }
-  </style>
+<meta charset="UTF-8" />
+<style>
+  :root {
+    color-scheme: light dark;
+    --accent:#ff5630; --accent-grad:linear-gradient(135deg,#ff7a45,#e62f1f);
+    --bg:#faf8f6; --surface:#fff; --surface-2:#f6f3f0;
+    --text:#221f1d; --muted:#8c857d; --faint:#b4ada4;
+    --border:#ececE8; --border-strong:#e0dcd6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#141312; --surface:#1f1d1b; --surface-2:#262320;
+      --text:#f1ede8; --muted:#9b938a; --faint:#6f675f; --border:#2d2a27; --border-strong:#3a3633; }
+  }
+  * { box-sizing:border-box; }
+  [hidden] { display:none !important; }  /* 覆盖 .frow 的 display:flex，保证 hidden 真隐藏 */
+  body { width:360px; margin:0; padding:0 16px 16px;
+    font:14px/1.5 "PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;
+    background:var(--bg); color:var(--text); }
+
+  /* header */
+  .hd { display:flex; align-items:center; gap:11px; padding:16px 0 14px; }
+  .hd img { width:34px; height:34px; border-radius:9px; }
+  .hd .t { font-size:15.5px; font-weight:700; }
+  .hd .s { font-size:11.5px; color:var(--muted); margin-top:1px; }
+
+  /* file pick */
+  .pick { display:flex; align-items:center; gap:12px; width:100%; text-align:left;
+    padding:13px 14px; background:var(--surface); border:1.5px dashed var(--border-strong);
+    border-radius:14px; cursor:pointer; color:var(--text); font:inherit; transition:.15s; }
+  .pick:hover { border-color:var(--accent); }
+  .pick .ic { width:38px;height:38px;border-radius:10px;background:var(--surface-2);
+    display:grid;place-items:center;color:var(--accent);flex:none;font-size:19px; }
+  .pick .main { font-size:13.5px; font-weight:600; }
+  .pick .sub { font-size:11px; color:var(--muted); margin-top:2px; }
+
+  /* section header */
+  .sec { display:flex; align-items:center; justify-content:space-between; margin:18px 2px 8px; }
+  .sec .l { font-size:11.5px; font-weight:700; color:var(--muted); letter-spacing:.04em; }
+  .sec .r { font-size:11.5px; color:var(--muted); }
+
+  /* count bar */
+  .bar { display:flex; align-items:center; justify-content:space-between; font-size:12px; color:var(--muted); }
+  .bar label { display:flex; align-items:center; gap:5px; cursor:pointer; }
+
+  /* chapter list */
+  #list { background:var(--surface); border:1px solid var(--border); border-radius:14px;
+    overflow:hidden; max-height:200px; overflow-y:auto; }
+  .item { display:flex; align-items:center; gap:10px; padding:9px 12px; border-bottom:1px solid var(--border); }
+  .item:last-child { border-bottom:none; }
+  .item input[type=checkbox] { appearance:none; width:17px;height:17px;border-radius:5px;
+    border:1.5px solid var(--border-strong); flex:none; cursor:pointer; position:relative; margin:0; }
+  .item input[type=checkbox]:checked { background:var(--accent); border-color:var(--accent); }
+  .item input[type=checkbox]:checked::after { content:"✓"; color:#fff; font-size:11px; font-weight:700;
+    position:absolute; left:2.5px; top:-1px; }
+  .item .title { flex:1; font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .item .meta { font-size:11px; color:var(--faint); flex:none; }
+  .item .edit { border:none; background:none; color:var(--faint); cursor:pointer; font-size:13px; padding:0 2px; }
+  .item .edit:hover { color:var(--accent); }
+  .empty { padding:24px; text-align:center; color:var(--faint); font-size:13px; }
+
+  /* settings card */
+  fieldset { border:1px solid var(--border); border-radius:14px; margin:0; padding:2px 14px; background:var(--surface); }
+  legend { display:none; }
+  .frow { display:flex; align-items:center; justify-content:space-between; gap:10px;
+    padding:11px 0; border-bottom:1px solid var(--border); font-size:13px; }
+  .frow:last-child { border-bottom:none; }
+  .frow .hint { font-size:10.5px; color:var(--faint); margin-top:2px; }
+  .frow .ctl { display:flex; align-items:center; gap:6px; flex:none; }
+
+  /* segmented (radios) */
+  .seg { display:flex; background:var(--surface-2); border-radius:9px; padding:3px; gap:2px; width:208px; }
+  .seg label { flex:1; cursor:pointer; }
+  .seg input { display:none; }
+  .seg span { display:block; text-align:center; font-size:12px; font-weight:600; color:var(--muted);
+    padding:6px 2px; border-radius:7px; }
+  .seg label:has(input:checked) span { background:var(--surface); color:var(--accent); box-shadow:0 1px 3px rgba(0,0,0,.12); }
+  @media (prefers-color-scheme: dark){ .seg label:has(input:checked) span { background:#34302c; } }
+
+  /* toggle (checkbox) */
+  input.tg { appearance:none; width:38px;height:22px;border-radius:11px; background:var(--border-strong);
+    position:relative; cursor:pointer; flex:none; transition:.2s; margin:0; }
+  input.tg::after { content:""; position:absolute; top:2px; left:2px; width:18px;height:18px;border-radius:50%;
+    background:#fff; transition:.2s; box-shadow:0 1px 2px rgba(0,0,0,.25); }
+  input.tg:checked { background:var(--accent); }
+  input.tg:checked::after { left:18px; }
+
+  /* pill select + number */
+  select.pill { appearance:none; font:inherit; font-size:12px; font-weight:600; color:var(--text);
+    background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:5px 22px 5px 10px; cursor:pointer;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%238c857d' stroke-width='3'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat:no-repeat; background-position:right 8px center; }
+  input.num { width:46px; text-align:center; font:inherit; font-size:12px; font-weight:600; color:var(--text);
+    background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:5px 4px; }
+  input[type=time].num, input[type=date].num, input[type=datetime-local].num { width:auto; padding:5px 8px; }
+  .rng { font-size:12px; color:var(--muted); }
+
+  /* preview */
+  #previewBox { margin-top:14px; }
+  #previewBox summary { cursor:pointer; font-size:11.5px; font-weight:700; color:var(--muted); letter-spacing:.04em; list-style:none; }
+  #previewBox summary::-webkit-details-marker { display:none; }
+  #preview { background:var(--surface); border:1px solid var(--border); border-radius:12px;
+    padding:8px 12px; margin-top:8px; max-height:160px; overflow:auto; font-size:12px; color:var(--text); }
+  #preview > div { padding:3px 0; display:flex; justify-content:space-between; gap:10px; }
+  #preview b { color:var(--accent); font-variant-numeric:tabular-nums; }
+
+  /* actions */
+  .actions { display:flex; gap:9px; margin-top:16px; }
+  button { font:inherit; cursor:pointer; }
+  #start { flex:1; border:none; border-radius:11px; padding:12px; font-size:14px; font-weight:700;
+    background:var(--accent-grad); color:#fff; box-shadow:0 6px 16px rgba(230,47,31,.3); }
+  #start:disabled { opacity:.45; box-shadow:none; cursor:not-allowed; }
+  #stopBtn { flex:none; width:46px; border:none; border-radius:11px; background:var(--surface);
+    border:1px solid var(--border); color:#d83a2f; font-size:13px; }
+  #openPanel { flex:none; width:46px; border-radius:11px; background:var(--surface);
+    border:1px solid var(--border); color:var(--muted); font-size:15px; }
+  .foot { font-size:11px; color:var(--faint); text-align:center; margin-top:11px; }
+</style>
 </head>
 <body>
-  <h1>🍅 番茄小说批量发布助手</h1>
-  <div class="sub">选文件夹 → 勾选 → 一键批量发布（支持定时排期）</div>
-
-  <div class="row">
-    <!-- webkitdirectory 让用户选整个文件夹，比 showDirectoryPicker 在 popup 里更稳 -->
-    <input type="file" id="folder" webkitdirectory directory multiple hidden />
-    <button id="pick">📁 选择章节文件夹</button>
-    <span id="folderName" class="meta"></span>
+  <div class="hd">
+    <img src="../icons/icon128.png" alt="" />
+    <div><div class="t">番茄小说批量发布助手</div><div class="s">整本书，一键自动发布</div></div>
   </div>
 
-  <!-- 发布设置 -->
-  <fieldset id="settings">
-    <legend>发布设置</legend>
-    <label class="opt"><input type="radio" name="mode" value="immediate" checked /> ⚡ 立即发布</label>
-    <label class="opt"><input type="radio" name="mode" value="auto" /> 🤖 智能定时</label>
-    <label class="opt"><input type="radio" name="mode" value="custom" /> ⏰ 自定义起始时间</label>
+  <input type="file" id="folder" webkitdirectory directory multiple hidden />
+  <button class="pick" id="pick">
+    <span class="ic">📁</span>
+    <span style="flex:1">
+      <span class="main">选择章节文件夹</span>
+      <span class="sub" id="folderName">支持 .txt / .md，自动解析章节</span>
+    </span>
+  </button>
 
-    <div class="cfg" id="autoCfg" hidden>
-      每日 <input type="number" id="dailyChapters" value="1" min="1" max="12" style="width:48px" /> 章，
-      起始时刻 <input type="time" id="startHour" value="06:00" />，当天内平均分配<br />
-      起始日期
-      <select id="startDateMode">
-        <option value="auto" selected>自动接续已排期</option>
-        <option value="fixed">指定日期</option>
-        <option value="tomorrow">明天</option>
-      </select>
-      <input type="date" id="startDate" hidden />
-    </div>
-    <div class="cfg" id="customCfg" hidden>
-      首章发布时间 <input type="datetime-local" id="customStart" />，后续每小时一章
-    </div>
-
-    <label class="opt">操作节奏：
-      <select id="pace">
-        <option value="1">正常</option>
-        <option value="1.6" selected>慢一点（推荐，更稳）</option>
-        <option value="2.4">很慢</option>
-      </select>
-    </label>
-    <label class="opt"><input type="checkbox" id="humanize" checked /> 🎭 拟人随机延迟（输入抖动，降低被识别）</label>
-    <div class="cfg">章节间隔随机
-      <input type="number" id="gapMin" value="5" min="0" max="600" style="width:52px" /> ~
-      <input type="number" id="gapMax" value="20" min="1" max="600" style="width:52px" /> 秒
-    </div>
-    <div class="cfg">发布时间随机偏移 ±
-      <input type="number" id="minuteJitter" value="10" min="0" max="120" style="width:48px" /> 分钟（定时模式，破整点规律）
-    </div>
-    <div class="cfg">本次最多发
-      <input type="number" id="maxPerBatch" value="0" min="0" max="999" style="width:56px" /> 章（0=不限；到量自动停，降低风控）
-    </div>
-    <label class="opt"><input type="checkbox" id="autoRetry" checked /> 失败自动重试（最多 3 次）</label>
-    <label class="opt"><input type="checkbox" id="fullDetection" checked /> 发布用「全面检测」（每章 2 次额度；取消则仅基础检测）</label>
-    <label class="opt">是否使用 AI（声明）：
-      <select id="useAI">
-        <option value="no" selected>否</option>
-        <option value="yes">是</option>
-      </select>
-    </label>
-    <label class="opt"><input type="checkbox" id="dryRun" /> 🧪 试填模式（只填表，<b>不点发布</b>）</label>
-  </fieldset>
-
-  <div class="bar">
-    <label><input type="checkbox" id="selectAll" /> 全选</label>
-    <span id="count">未加载</span>
-  </div>
-
+  <div class="sec"><span class="l">章节列表</span><span class="r"><label style="cursor:pointer"><input type="checkbox" id="selectAll" style="vertical-align:-1px" /> 全选</label> · <span id="count">未加载</span></span></div>
   <div id="list"><div class="empty">尚未选择文件夹</div></div>
 
-  <details id="previewBox" style="margin-top:10px;" hidden>
-    <summary style="cursor:pointer;font-size:12px;color:#666;">📅 排期预览（点开查看每章发布时间）</summary>
-    <div id="preview" style="max-height:160px;overflow:auto;font-size:12px;color:#555;margin-top:6px;border:1px solid #eee;border-radius:6px;padding:6px;"></div>
+  <div class="sec"><span class="l">发布设置</span></div>
+  <fieldset id="settings">
+    <legend>发布设置</legend>
+
+    <div class="frow">
+      <span>发布模式</span>
+      <div class="seg">
+        <label><input type="radio" name="mode" value="immediate" checked /><span>立即</span></label>
+        <label><input type="radio" name="mode" value="auto" /><span>智能定时</span></label>
+        <label><input type="radio" name="mode" value="custom" /><span>自定义</span></label>
+      </div>
+    </div>
+
+    <div class="frow" id="autoCfg" hidden style="flex-wrap:wrap">
+      <span>每日章数 · 起始时刻<div class="hint">当天内按 24/N 平均分配</div></span>
+      <div class="ctl"><input type="number" id="dailyChapters" class="num" value="1" min="1" max="12" /><input type="time" id="startHour" class="num" value="06:00" /></div>
+      <div class="ctl" style="width:100%; justify-content:space-between; margin-top:2px">
+        <span style="font-size:12px;color:var(--muted)">起始日期</span>
+        <span class="ctl">
+          <select id="startDateMode" class="pill">
+            <option value="auto" selected>自动接续已排期</option>
+            <option value="fixed">指定日期</option>
+            <option value="tomorrow">明天</option>
+          </select>
+          <input type="date" id="startDate" class="num" hidden />
+        </span>
+      </div>
+    </div>
+    <div class="frow" id="customCfg" hidden>
+      <span>首章发布时间<div class="hint">后续每小时一章</div></span>
+      <input type="datetime-local" id="customStart" class="num" />
+    </div>
+
+    <div class="frow"><span>操作节奏</span>
+      <select id="pace" class="pill">
+        <option value="1">正常</option>
+        <option value="1.6" selected>慢一点（推荐）</option>
+        <option value="2.4">很慢</option>
+      </select>
+    </div>
+    <div class="frow"><span>章节间隔随机<div class="hint">每章之间随机等待</div></span>
+      <span class="rng"><input type="number" id="gapMin" class="num" value="5" min="0" max="600" /> ~ <input type="number" id="gapMax" class="num" value="20" min="1" max="600" /> 秒</span>
+    </div>
+    <div class="frow"><span>发布时间随机偏移</span>
+      <span class="rng">± <input type="number" id="minuteJitter" class="num" value="10" min="0" max="120" /> 分</span>
+    </div>
+    <div class="frow"><span>本次最多发布<div class="hint">到量自动停，降低风控</div></span>
+      <span class="rng"><input type="number" id="maxPerBatch" class="num" value="0" min="0" max="999" /> 章</span>
+    </div>
+    <div class="frow"><span>🎭 拟人随机延迟</span><input type="checkbox" id="humanize" class="tg" checked /></div>
+    <div class="frow"><span>失败自动重试（最多 3 次）</span><input type="checkbox" id="autoRetry" class="tg" checked /></div>
+    <div class="frow"><span>全面检测（每章 2 次额度）</span><input type="checkbox" id="fullDetection" class="tg" checked /></div>
+    <div class="frow"><span>声明使用 AI</span>
+      <select id="useAI" class="pill"><option value="no" selected>否</option><option value="yes">是</option></select>
+    </div>
+    <div class="frow"><span>🧪 试填模式（只填不发）</span><input type="checkbox" id="dryRun" class="tg" /></div>
+  </fieldset>
+
+  <details id="previewBox" hidden>
+    <summary>📅 排期预览（点开查看每章发布时间）</summary>
+    <div id="preview"></div>
   </details>
 
-  <div class="row" style="margin-top: 12px;">
-    <button id="start" disabled>🚀 开始上传选中章节</button>
-    <button id="stopBtn" style="border-color:#e74c3c;background:#e74c3c;">⏹ 停止</button>
-    <button id="openPanel" class="ghost">📊 进度面板</button>
+  <div class="actions">
+    <button id="start" disabled>🚀 开始发布选中章节</button>
+    <button id="stopBtn" title="停止">⏹</button>
+    <button id="openPanel" title="进度面板">📊</button>
   </div>
+  <div class="foot">设置已自动保存 · 数据仅存本地</div>
 
   <script src="popup.js"></script>
 </body>

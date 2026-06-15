@@ -1,48 +1,80 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-  <meta charset="UTF-8" />
-  <style>
-    :root { color-scheme: light dark; --bg:#fff; --fg:#1a1a1a; --border:#e0e0e0; --line:#f0f0f0; }
-    @media (prefers-color-scheme: dark) {
-      :root { --bg:#1e1f22; --fg:#e6e6e6; --border:#3a3d42; --line:#2a2c30; }
-    }
-    body { margin: 0; padding: 12px; font: 13px/1.5 system-ui, sans-serif; background: var(--bg); color: var(--fg); }
-    h1 { font-size: 15px; margin: 0 0 8px; }
-    .summary { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
-    .chip { padding: 3px 8px; border-radius: 12px; font-size: 12px; background: #eef; }
-    .chip.done { background: #e3f6e8; color: #1a7f37; }
-    .chip.failed { background: #fde8e8; color: #c0392b; }
-    .chip.pending { background: #eef1f4; color: #555; }
-    .bar { height: 6px; border-radius: 3px; background: #eee; overflow: hidden; margin-bottom: 10px; }
-    .bar > i { display: block; height: 100%; background: #27ae60; transition: width .3s; }
-    button { font: inherit; padding: 7px 12px; border-radius: 8px; cursor: pointer; border: 1px solid #e74c3c; background: #e74c3c; color: #fff; }
-    button:disabled { opacity: .5; cursor: not-allowed; }
-    #list { border: 1px solid var(--border); border-radius: 8px; max-height: 60vh; overflow: auto; }
-    .item { display: flex; gap: 6px; align-items: center; padding: 5px 9px; border-bottom: 1px solid var(--line); }
-    .item:last-child { border-bottom: none; }
-    .item .t { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .item .badge { font-size: 11px; padding: 1px 6px; border-radius: 8px; }
-    .badge.uploaded { background: #e3f6e8; color: #1a7f37; }
-    .badge.failed { background: #fde8e8; color: #c0392b; }
-    .badge.pending { background: #eef1f4; color: #777; }
-    .time { color: #999; font-size: 11px; }
-    .empty { padding: 24px; text-align: center; color: #aaa; }
-    .muted { color: #888; font-size: 12px; margin: 6px 0; }
-  </style>
+<meta charset="UTF-8" />
+<style>
+  :root {
+    color-scheme: light dark;
+    --accent:#ff5630; --accent-grad:linear-gradient(135deg,#ff7a45,#e62f1f);
+    --ok:#15a05a; --ok-bg:#e7f6ec; --fail:#d83a2f; --fail-bg:#fdeae8;
+    --bg:#faf8f6; --surface:#fff; --surface-2:#f6f3f0;
+    --text:#221f1d; --muted:#8c857d; --faint:#b4ada4; --border:#ececE8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --ok-bg:#163325; --fail-bg:#3a1f1c; --bg:#141312; --surface:#1f1d1b; --surface-2:#262320;
+      --text:#f1ede8; --muted:#9b938a; --faint:#6f675f; --border:#2d2a27; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:0 14px 16px; background:var(--bg); color:var(--text);
+    font:13px/1.5 "PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif; }
+
+  .hd { display:flex; align-items:center; gap:10px; padding:14px 2px 12px; }
+  .hd img { width:30px;height:30px;border-radius:8px; }
+  .hd .t { font-size:14.5px; font-weight:700; }
+  .hd .s { font-size:11px; color:var(--muted); margin-top:1px; }
+
+  .stats { display:flex; gap:8px; margin-bottom:12px; }
+  .stat { flex:1; background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:10px 6px; text-align:center; }
+  .stat .n { font-size:22px; font-weight:800; font-variant-numeric:tabular-nums; line-height:1.1; }
+  .stat .k { font-size:10.5px; color:var(--muted); margin-top:2px; }
+  .stat.ok .n { color:var(--ok); } .stat.fail .n { color:var(--fail); } .stat.wait .n { color:var(--muted); }
+
+  .pbar { height:8px; border-radius:4px; background:var(--surface-2); overflow:hidden; }
+  .pbar > i { display:block; height:100%; width:0%; background:var(--accent-grad); border-radius:4px; transition:width .3s; }
+  .pmeta { display:flex; justify-content:space-between; font-size:11px; color:var(--muted); margin:6px 2px 0; min-height:14px; }
+
+  #list { margin-top:12px; background:var(--surface); border:1px solid var(--border); border-radius:14px; overflow:hidden; max-height:54vh; overflow-y:auto; }
+  .item { display:flex; align-items:center; gap:9px; padding:9px 12px; border-bottom:1px solid var(--border); font-size:12.5px; }
+  .item:last-child { border-bottom:none; }
+  .dot { width:8px;height:8px;border-radius:50%; flex:none; background:var(--faint); }
+  .dot.ok{background:var(--ok)} .dot.run{background:var(--accent)} .dot.fail{background:var(--fail)}
+  .item .t { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .item .time { font-size:10.5px; color:var(--faint); flex:none; font-variant-numeric:tabular-nums; }
+  .badge { font-size:10px; font-weight:600; padding:2px 7px; border-radius:7px; flex:none; }
+  .badge.uploaded { background:var(--ok-bg); color:var(--ok); }
+  .badge.failed { background:var(--fail-bg); color:var(--fail); }
+  .badge.pending { background:var(--surface-2); color:var(--muted); }
+  .empty { padding:28px; text-align:center; color:var(--faint); }
+
+  .sactions { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:14px; }
+  .sbtn { border:1px solid var(--border); background:var(--surface); color:var(--text);
+    border-radius:10px; padding:10px; font:inherit; font-size:12.5px; font-weight:600; cursor:pointer; }
+  .sbtn:hover { border-color:var(--faint); }
+  .sbtn:disabled { opacity:.45; cursor:not-allowed; }
+  .sbtn.stop { grid-column:1/-1; background:var(--fail); color:#fff; border-color:transparent; }
+  .sbtn.stop:disabled { background:var(--surface-2); color:var(--muted); }
+  .sbtn.warn { color:#b9791b; }
+</style>
 </head>
 <body>
-  <h1>📊 上传进度</h1>
-  <div id="proj" class="muted"></div>
-  <div class="summary" id="summary"></div>
-  <div class="bar"><i id="barfill" style="width:0%"></i></div>
-  <div class="row" style="margin-bottom:10px; display:flex; gap:8px;">
-    <button id="stop" disabled>⏹ 停止上传</button>
-    <button id="retryFailed" disabled style="border-color:#f39c12;background:#f39c12;">🔁 重发失败章节</button>
-    <button id="exportReport" class="ghost" style="border-color:#888;background:transparent;color:inherit;">📄 导出报告</button>
-    <button id="exportLog" class="ghost" style="border-color:#888;background:transparent;color:inherit;">📥 导出日志</button>
+  <div class="hd">
+    <img src="../icons/icon128.png" alt="" />
+    <div><div class="t">上传进度</div><div class="s" id="proj">尚未开始</div></div>
   </div>
+
+  <div class="stats" id="summary"></div>
+  <div class="pbar"><i id="barfill"></i></div>
+  <div class="pmeta" id="pmeta"></div>
+
   <div id="list"><div class="empty">暂无上传任务</div></div>
+
+  <div class="sactions">
+    <button id="stop" class="sbtn stop" disabled>⏹ 停止上传</button>
+    <button id="retryFailed" class="sbtn warn" disabled>🔁 重发失败</button>
+    <button id="exportReport" class="sbtn">📄 导出报告</button>
+    <button id="exportLog" class="sbtn">📥 导出日志</button>
+  </div>
+
   <script src="sidepanel.js"></script>
 </body>
 </html>
