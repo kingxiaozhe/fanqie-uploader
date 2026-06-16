@@ -109,10 +109,18 @@
 
   // 接收 net-hook 截获的"发布接口"权威结果（成功与否以番茄接口返回为准）
   let netPublishResult = null;
+  // 暂时性限流（-1010 操作太频繁 / 稍后再试）：番茄前端会自动重发到成功，
+  // 不能当成终局失败——否则轮询恰好先抓到这一条就会把已成功的章节误判为失败。
+  const isTransientFail = (r) =>
+    r && !r.ok && (
+      r.code === -1010 || r.code === "-1010" ||
+      /频繁|稍后再试|稍后重试|请重试|too frequent|try again|rate ?limit/i.test(r.message || "")
+    );
   window.addEventListener("message", (e) => {
     if (e.source === window && e.data && e.data.__fqNet && e.data.type === "publish-result") {
-      netPublishResult = e.data;
-      dlog(`🔌 发布接口返回 ok=${e.data.ok} code=${e.data.code} status=${e.data.status} msg=${e.data.message || ""}`);
+      const transient = isTransientFail(e.data);
+      if (!transient) netPublishResult = e.data; // 只采信终局结果；限流条目仅记录、继续等真正的返回
+      dlog(`🔌 发布接口返回 ok=${e.data.ok} code=${e.data.code} status=${e.data.status} msg=${e.data.message || ""}${transient ? " ⏳(限流·忽略,等番茄自动重试)" : ""}`);
     }
   });
 

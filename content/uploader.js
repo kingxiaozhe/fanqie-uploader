@@ -64,7 +64,11 @@
       startUpload();
       return;
     }
-    // 没有自动开始标记 = 用户重新进了页面：若还有没发完的，询问是否续传
+    // 没有自动开始标记 = 用户重新进了页面：若还有没发完的，询问是否续传。
+    // ⚠️ 仅在标签页【可见】时询问：发布用的后台标签页(active:false)成功后会被番茄
+    // 跳回章节管理页，那里的 uploader 实例不应弹询问（后台 confirm 会被秒判取消，
+    // 刷出误导性的"已暂停"日志）。真正的章节管理页是用户当前在看的，才需要续传询问。
+    if (document.visibilityState !== "visible") return;
     const pending = session.tasks.filter((t) => t.status !== "uploaded" && t.status !== "failed").length;
     if (pending > 0 && !resumePrompted) {
       resumePrompted = true;
