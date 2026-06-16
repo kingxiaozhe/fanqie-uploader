@@ -4,7 +4,7 @@
     "description": "Extension name"
   },
   "appDesc": {
-    "message": "Pick a local chapters folder and batch-publish to the Fanqie Novel author console, with smart scheduling and randomized intervals — no more pasting chapters one by one.",
+    "message": "Batch-publish a local chapters folder to the Fanqie Novel author console, with smart scheduling and randomized intervals.",
     "description": "Extension description"
   }
 }
