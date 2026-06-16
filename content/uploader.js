@@ -45,6 +45,12 @@
       }
     }).observe(document, { subtree: true, childList: true });
 
+    // 标签页从后台切到前台时补判一次：若用户在后台打开了章节管理页（此时 visibilityState=hidden，
+    // 续传询问被跳过），切回来变可见时再触发一次询问。busy/resumePrompted 会防止重复或干扰在跑的批次。
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") detectAndAct();
+    });
+
     detectAndAct();
   }
 
