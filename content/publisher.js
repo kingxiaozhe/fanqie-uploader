@@ -455,9 +455,7 @@
             .find((b) => (b.textContent || "").includes("确认发布"));
           if (again) {
             closePickerDropdowns();          // 先关掉可能挡住的日期/时间浮层
-            realClick(again);
-            try { again.click(); } catch (_) {}
-            const span = again.querySelector("span"); if (span) realClick(span);
+            realClick(again);                // 单击即可，避免重复提交触发 -1010
             setStatus("🔁 弹窗未关，重点「确认发布」(" + n + ")…");
             return;
           }
@@ -663,11 +661,11 @@
     let btn = primaries.find((b) => (b.textContent || "").trim().includes("确认发布")) || primaries[0];
     if (!btn) throw new Error("未找到『确认发布』按钮");
     netPublishResult = null; // 清空，只采信本次确认发布触发的接口结果
-    // 三管齐下确保触发：完整鼠标序列 + 点内层 span + 原生 click
+    // ⚠️ 只点【一次】：realClick 的完整鼠标序列(mousedown+mouseup+click)足以触发番茄的提交。
+    //    早期"三管齐下"(再点 span + 原生 click)会让 React onClick 触发 2~3 次，
+    //    同一秒内重复打发布接口 → 番茄回 -1010「操作太频繁」。这是限流的根因，已去除。
+    //    万一这一次没生效，waitForPublishResult 里的"弹窗未关就重点"自愈会兜底重发。
     realClick(btn);
-    const span = btn.querySelector("span");
-    if (span) realClick(span);
-    try { btn.click(); } catch (_) {}
     setStatus("✅ 已点击确认发布，等待跳转…");
     await delay(1200);
   }
