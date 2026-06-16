@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<style>
+  /* ===== 真实新版 UI 的设计 token（强制浅色，截图一致）===== */
+  :root{
+    --accent:#ff5630; --accent-grad:linear-gradient(135deg,#ff7a45,#e62f1f);
+    --ok:#15a05a; --ok-bg:#e7f6ec; --fail:#d83a2f; --fail-bg:#fdeae8;
+    --bg:#faf8f6; --surface:#fff; --surface-2:#f6f3f0;
+    --text:#221f1d; --muted:#8c857d; --faint:#b4ada4; --border:#ececE8; --border-strong:#e0dcd6;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font:14px/1.5 "PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;}
+  /* 截图用：一次只显示被 hash 命中的那张 slide */
+  .slide{display:none;}
+  .slide:target{display:block;}
+
+  /* ===== 1280×800 营销画布 ===== */
+  .slide{
+    width:1280px;height:800px;position:relative;overflow:hidden;
+    background:linear-gradient(135deg,#ff7a45 0%,#f1542a 55%,#e62f1f 100%);
+  }
+  /* 顶部 logo + 名称 */
+  .brand{position:absolute;top:56px;left:72px;display:flex;align-items:center;gap:16px;z-index:2;}
+  .brand img{width:54px;height:54px;border-radius:13px;box-shadow:0 4px 14px rgba(0,0,0,.18);}
+  .brand .nm{color:#fff;font-size:25px;font-weight:800;letter-spacing:.01em;}
+  /* 大标题 + 副标题 */
+  .head{position:absolute;top:172px;left:74px;z-index:2;max-width:560px;}
+  .head h1{color:#fff;font-size:54px;font-weight:850;line-height:1.12;letter-spacing:.01em;
+    text-shadow:0 2px 14px rgba(180,30,15,.25);}
+  .head p{color:#fff;opacity:.94;font-size:23px;font-weight:600;margin-top:18px;line-height:1.45;}
+  .head .tags{margin-top:30px;display:flex;flex-direction:column;gap:13px;}
+  .head .tags span{color:#fff;font-size:19px;font-weight:600;opacity:.96;}
+
+  /* 右侧 UI 面板容器：把真实 popup/sidepanel 放大 1.55x */
+  .stage{position:absolute;right:96px;top:50%;transform:translateY(-50%);z-index:3;}
+  .panel{transform:scale(1.5);transform-origin:center right;
+    background:var(--bg);border-radius:20px;
+    box-shadow:0 30px 70px rgba(120,20,10,.34),0 4px 14px rgba(0,0,0,.16);}
+  .panel.pop{width:360px;padding:0 16px 18px;}
+  .panel.side{width:330px;padding:0 14px 16px;}
+
+  /* —— 复刻 popup 头 —— */
+  .hd{display:flex;align-items:center;gap:11px;padding:16px 0 14px;}
+  .hd img{width:34px;height:34px;border-radius:9px;}
+  .hd .t{font-size:15.5px;font-weight:700;color:var(--text);}
+  .hd .s{font-size:11.5px;color:var(--muted);margin-top:1px;}
+
+  /* file pick */
+  .pick{display:flex;align-items:center;gap:12px;width:100%;text-align:left;
+    padding:13px 14px;background:var(--surface);border:1.5px dashed var(--border-strong);border-radius:14px;}
+  .pick .ic{width:38px;height:38px;border-radius:10px;background:var(--surface-2);
+    display:grid;place-items:center;color:var(--accent);flex:none;font-size:19px;}
+  .pick .main{font-size:13.5px;font-weight:600;color:var(--text);}
+  .pick .sub{font-size:11px;color:var(--ok);margin-top:2px;font-weight:600;}
+
+  .sec{display:flex;align-items:center;justify-content:space-between;margin:18px 2px 8px;}
+  .sec .l{font-size:11.5px;font-weight:700;color:var(--muted);letter-spacing:.04em;}
+  .sec .r{font-size:11.5px;color:var(--muted);}
+
+  #list{background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;}
+  .item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--border);}
+  .item:last-child{border-bottom:none;}
+  .cbx{appearance:none;width:17px;height:17px;border-radius:5px;border:1.5px solid var(--border-strong);
+    flex:none;position:relative;background:var(--accent);border-color:var(--accent);}
+  .cbx::after{content:"✓";color:#fff;font-size:11px;font-weight:700;position:absolute;left:2.5px;top:-1px;}
+  .item .title{flex:1;font-size:13px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .item .meta{font-size:11px;color:var(--faint);flex:none;}
+
+  /* settings */
+  fieldset{border:1px solid var(--border);border-radius:14px;padding:2px 14px;background:var(--surface);}
+  .frow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 0;
+    border-bottom:1px solid var(--border);font-size:13px;color:var(--text);}
+  .frow:last-child{border-bottom:none;}
+  .frow .hint{font-size:10.5px;color:var(--faint);margin-top:2px;}
+  .ctl{display:flex;align-items:center;gap:6px;flex:none;}
+  .seg{display:flex;background:var(--surface-2);border-radius:9px;padding:3px;gap:2px;width:208px;}
+  .seg span{flex:1;text-align:center;font-size:12px;font-weight:600;color:var(--muted);padding:6px 2px;border-radius:7px;}
+  .seg span.on{background:var(--surface);color:var(--accent);box-shadow:0 1px 3px rgba(0,0,0,.12);}
+  .tg{width:38px;height:22px;border-radius:11px;background:var(--accent);position:relative;flex:none;}
+  .tg::after{content:"";position:absolute;top:2px;left:18px;width:18px;height:18px;border-radius:50%;
+    background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);}
+  .tg.off{background:var(--border-strong);} .tg.off::after{left:2px;}
+  .pill{font-size:12px;font-weight:600;color:var(--text);background:var(--surface-2);
+    border:1px solid var(--border);border-radius:8px;padding:5px 22px 5px 10px;position:relative;}
+  .pill::after{content:"▾";position:absolute;right:8px;color:var(--muted);}
+  .num{min-width:30px;text-align:center;font-size:12px;font-weight:600;color:var(--text);
+    background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:5px 8px;}
+  .rng{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:5px;}
+
+  .actions{display:flex;gap:9px;margin-top:16px;}
+  .start{flex:1;border:none;border-radius:11px;padding:12px;font-size:14px;font-weight:700;
+    background:var(--accent-grad);color:#fff;box-shadow:0 6px 16px rgba(230,47,31,.3);text-align:center;}
+  .sq{flex:none;width:46px;border-radius:11px;background:var(--surface);border:1px solid var(--border);
+    color:var(--muted);font-size:15px;display:grid;place-items:center;}
+  .foot{font-size:11px;color:var(--faint);text-align:center;margin-top:11px;}
+
+  /* —— sidepanel —— */
+  .stats{display:flex;gap:8px;margin-bottom:12px;}
+  .stat{flex:1;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px 6px;text-align:center;}
+  .stat .n{font-size:22px;font-weight:800;line-height:1.1;}
+  .stat .k{font-size:10.5px;color:var(--muted);margin-top:2px;}
+  .stat.ok .n{color:var(--ok);} .stat.fail .n{color:var(--fail);} .stat.wait .n{color:var(--muted);}
+  .pbar{height:8px;border-radius:4px;background:var(--surface-2);overflow:hidden;}
+  .pbar>i{display:block;height:100%;background:var(--accent-grad);border-radius:4px;}
+  .pmeta{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin:6px 2px 0;}
+  .slist{margin-top:12px;background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;}
+  .sitem{display:flex;align-items:center;gap:9px;padding:10px 12px;border-bottom:1px solid var(--border);font-size:12.5px;color:var(--text);}
+  .sitem:last-child{border-bottom:none;}
+  .dot{width:8px;height:8px;border-radius:50%;flex:none;background:var(--faint);}
+  .dot.ok{background:var(--ok);} .dot.run{background:var(--accent);} .dot.wait{background:var(--faint);}
+  .sitem .t{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .sitem .time{font-size:10.5px;color:var(--faint);flex:none;}
+  .badge{font-size:10px;font-weight:600;padding:2px 7px;border-radius:7px;flex:none;}
+  .badge.ok{background:var(--ok-bg);color:var(--ok);}
+  .badge.run{background:var(--accent);color:#fff;}
+  .badge.wait{background:var(--surface-2);color:var(--muted);}
+  .sactions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px;}
+  .sbtn{border:1px solid var(--border);background:var(--surface);color:var(--text);border-radius:10px;
+    padding:10px;font-size:12.5px;font-weight:600;text-align:center;}
+  .sbtn.stop{grid-column:1/-1;background:var(--fail);color:#fff;border-color:transparent;}
+</style>
+</head>
+<body>
+
+<!-- ============ 截图 2：选文件夹，自动解析 ============ -->
+<div class="slide" id="s2">
+  <div class="brand"><img src="../icons/icon128.png"><span class="nm">番茄小说批量发布助手</span></div>
+  <div class="head">
+    <h1>选文件夹<br>自动解析章节</h1>
+    <p>把整本书的 .txt / .md 丢进去，<br>章节号、标题、正文一次识别。</p>
+  </div>
+  <div class="stage"><div class="panel pop">
+    <div class="hd"><img src="../icons/icon128.png"><div><div class="t">番茄小说批量发布助手</div><div class="s">整本书，一键自动发布</div></div></div>
+    <div class="pick"><span class="ic">📁</span><span style="flex:1"><span class="main">我的小说</span><br><span class="sub">已解析 86 章 · 自动按章节号排序</span></span></div>
+    <div class="sec"><span class="l">章节列表</span><span class="r">全选 · 共 86 章</span></div>
+    <div id="list">
+      <div class="item"><span class="cbx"></span><span class="title">第1章 · 风起云涌</span><span class="meta">2,134 字</span></div>
+      <div class="item"><span class="cbx"></span><span class="title">第2章 · 初入江湖</span><span class="meta">1,987 字</span></div>
+      <div class="item"><span class="cbx"></span><span class="title">第3章 · 故人相逢</span><span class="meta">2,051 字</span></div>
+      <div class="item"><span class="cbx"></span><span class="title">第4章 · 夜探禁地</span><span class="meta">2,210 字</span></div>
+    </div>
+    <div class="actions"><div class="start">🚀 开始发布选中章节</div><div class="sq">⏹</div><div class="sq">📊</div></div>
+    <div class="foot">设置已自动保存 · 数据仅存本地</div>
+  </div></div>
+</div>
+
+<!-- ============ 截图 3：智能定时 + 防风控 ============ -->
+<div class="slide" id="s3">
+  <div class="brand"><img src="../icons/icon128.png"><span class="nm">番茄小说批量发布助手</span></div>
+  <div class="head">
+    <h1>智能定时<br>防风控发布</h1>
+    <p>每天定量、自动排期，<br>拟人间隔 + 时间偏移，稳稳更新。</p>
+  </div>
+  <div class="stage"><div class="panel pop">
+    <div class="hd"><img src="../icons/icon128.png"><div><div class="t">发布设置</div><div class="s">设置已自动保存</div></div></div>
+    <fieldset>
+      <div class="frow"><span>发布模式</span>
+        <div class="seg"><span>立即</span><span class="on">智能定时</span><span>自定义</span></div>
+      </div>
+      <div class="frow"><span>每日章数 · 起始时刻<div class="hint">当天内按 24/N 平均分配</div></span>
+        <div class="ctl"><span class="num">3</span><span class="num">06:00</span></div>
+      </div>
+      <div class="frow"><span>章节间隔随机<div class="hint">每章之间随机等待</div></span>
+        <span class="rng"><span class="num">60</span> ~ <span class="num">180</span> 秒</span>
+      </div>
+      <div class="frow"><span>发布时间随机偏移</span>
+        <span class="rng">± <span class="num">10</span> 分</span>
+      </div>
+      <div class="frow"><span>🎭 拟人随机延迟</span><span class="tg"></span></div>
+      <div class="frow"><span>失败自动重试（最多 3 次）</span><span class="tg"></span></div>
+    </fieldset>
+    <div class="foot">到量自动停 · 降低风控</div>
+  </div></div>
+</div>
+
+<!-- ============ 截图 4：实时进度 ============ -->
+<div class="slide" id="s4">
+  <div class="brand"><img src="../icons/icon128.png"><span class="nm">番茄小说批量发布助手</span></div>
+  <div class="head">
+    <h1>实时进度<br>一目了然</h1>
+    <p>侧边栏实时跟踪每一章，<br>随时停止、失败一键重发、可导出报告。</p>
+  </div>
+  <div class="stage"><div class="panel side">
+    <div class="hd"><img src="../icons/icon128.png"><div><div class="t">上传进度</div><div class="s">我的小说 · 共 86 章</div></div></div>
+    <div class="stats">
+      <div class="stat ok"><div class="n">12</div><div class="k">已发布</div></div>
+      <div class="stat fail"><div class="n">0</div><div class="k">失败</div></div>
+      <div class="stat wait"><div class="n">74</div><div class="k">待发布</div></div>
+    </div>
+    <div class="pbar"><i style="width:14%"></i></div>
+    <div class="pmeta"><span>14% · 12/86</span><span>上传中</span></div>
+    <div class="slist">
+      <div class="sitem"><span class="dot ok"></span><span class="t">第12章 · 软刀子</span><span class="time">06-20 06:00</span><span class="badge ok">已发</span></div>
+      <div class="sitem"><span class="dot run"></span><span class="t">第13章 · 这是个局</span><span class="badge run">发布中</span></div>
+      <div class="sitem"><span class="dot wait"></span><span class="t">第14章 · 入场</span><span class="time">06-22 06:00</span><span class="badge wait">待发</span></div>
+    </div>
+    <div class="sactions">
+      <div class="sbtn stop">⏹ 停止上传</div>
+      <div class="sbtn">📄 导出报告</div>
+      <div class="sbtn">📥 导出日志</div>
+    </div>
+  </div></div>
+</div>
+
+</body>
+</html>
