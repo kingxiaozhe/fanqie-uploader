@@ -73,6 +73,9 @@ async function restoreSettings() {
     if (s.gapMax != null) $("gapMax").value = s.gapMax;
     if (s.minuteJitter != null) $("minuteJitter").value = s.minuteJitter;
     if (s.maxPerBatch != null) $("maxPerBatch").value = s.maxPerBatch;
+    if (typeof s.nightAvoid === "boolean") $("nightAvoid").checked = s.nightAvoid;
+    if (s.nightStart) $("nightStart").value = s.nightStart;
+    if (s.nightEnd) $("nightEnd").value = s.nightEnd;
     if (s.detectionMode) $("fullDetection").checked = s.detectionMode === "full";
     if (s.useAI) $("useAI").value = s.useAI;
     // dryRun（试填模式）不恢复，每次默认关闭，避免下次静默不发布
@@ -94,6 +97,35 @@ document.querySelectorAll("#settings input, #settings select").forEach((el) =>
 );
 restoreSettings();
 
+// #2.2 安全档位：一键套用一组反风控参数（间隔/偏移/上限/拟人/夜间避让）
+const PRESETS = {
+  conservative: { pace: "1.6", gapMin: 60, gapMax: 180, minuteJitter: 15, maxPerBatch: 8, humanize: true,  nightAvoid: true  },
+  standard:     { pace: "1.6", gapMin: 30, gapMax: 90,  minuteJitter: 10, maxPerBatch: 0, humanize: true,  nightAvoid: false },
+  fast:         { pace: "1",   gapMin: 8,  gapMax: 25,  minuteJitter: 5,  maxPerBatch: 0, humanize: true,  nightAvoid: false },
+};
+function applyPreset(name) {
+  const p = PRESETS[name];
+  if (!p) return;
+  $("pace").value = p.pace;
+  $("gapMin").value = p.gapMin;
+  $("gapMax").value = p.gapMax;
+  $("minuteJitter").value = p.minuteJitter;
+  $("maxPerBatch").value = p.maxPerBatch;
+  $("humanize").checked = p.humanize;
+  $("nightAvoid").checked = p.nightAvoid;
+  document.querySelectorAll(".preset").forEach((b) => b.classList.toggle("on", b.dataset.preset === name));
+  syncNightRow();
+  saveSettings();
+  renderPreview();
+}
+document.querySelectorAll(".preset").forEach((b) =>
+  b.addEventListener("click", () => applyPreset(b.dataset.preset))
+);
+// 夜间时段子行：仅在开启夜间避让时显示
+function syncNightRow() { const r = $("nightRow"); if (r) r.hidden = !$("nightAvoid").checked; }
+$("nightAvoid").addEventListener("change", syncNightRow);
+syncNightRow();
+
 // 收集发布设置
 function collectSettings() {
   return {
@@ -111,6 +143,9 @@ function collectSettings() {
     gapMax: Math.max(1, +$("gapMax").value || 20),     // 章节间隔随机上限（秒）
     minuteJitter: Math.max(0, +$("minuteJitter").value || 0), // 发布时间随机偏移±分钟
     maxPerBatch: Math.max(0, +$("maxPerBatch").value || 0),   // 本次发布量上限（0=不限）
+    nightAvoid: $("nightAvoid").checked,                // #2.3 夜间避让：跳过夜间档位
+    nightStart: $("nightStart").value || "23:00",       // 夜间时段起
+    nightEnd: $("nightEnd").value || "07:00",           // 夜间时段止
     detectionMode: $("fullDetection").checked ? "full" : "basic", // 内容检测方式
     useAI: $("useAI").value,                            // 是否使用AI声明: no | yes
     dryRun: $("dryRun").checked,                        // 试填模式：只填表不发布

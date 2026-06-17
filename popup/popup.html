@@ -79,6 +79,14 @@
   .seg label:has(input:checked) span { background:var(--surface); color:var(--accent); box-shadow:0 1px 3px rgba(0,0,0,.12); }
   @media (prefers-color-scheme: dark){ .seg label:has(input:checked) span { background:#34302c; } }
 
+  /* #2.2 安全档位按钮组 */
+  .presets { display:flex; gap:6px; }
+  .preset { border:1px solid var(--border); background:var(--surface-2); color:var(--muted);
+    border-radius:8px; padding:5px 11px; font:inherit; font-size:12px; font-weight:600; cursor:pointer; }
+  .preset:hover { border-color:var(--faint); }
+  .preset.on { background:var(--accent); color:#fff; border-color:transparent; }
+  .hintrow { font-size:10.5px; color:var(--faint); padding:0 0 10px; margin-top:-4px; line-height:1.45; }
+
   /* toggle (checkbox) */
   input.tg { appearance:none; width:38px;height:22px;border-radius:11px; background:var(--border-strong);
     position:relative; cursor:pointer; flex:none; transition:.2s; margin:0; }
@@ -142,6 +150,15 @@
     <legend>发布设置</legend>
 
     <div class="frow">
+      <span>安全档位<div class="hint">一键套用反风控参数</div></span>
+      <div class="presets">
+        <button type="button" class="preset" data-preset="conservative">保守</button>
+        <button type="button" class="preset" data-preset="standard">标准</button>
+        <button type="button" class="preset" data-preset="fast">快速</button>
+      </div>
+    </div>
+
+    <div class="frow">
       <span>发布模式</span>
       <div class="seg">
         <label><input type="radio" name="mode" value="immediate" checked /><span>立即</span></label>
@@ -186,12 +203,17 @@
     <div class="frow"><span>本次最多发布<div class="hint">到量自动停，降低风控</div></span>
       <span class="rng"><input type="number" id="maxPerBatch" class="num" value="0" min="0" max="999" /> 章</span>
     </div>
+    <div class="frow"><span>🌙 夜间避让<div class="hint">该时段不排期，顺延到白天</div></span><input type="checkbox" id="nightAvoid" class="tg" /></div>
+    <div class="frow" id="nightRow" hidden><span>夜间时段</span>
+      <span class="rng"><input type="time" id="nightStart" class="num" value="23:00" /> ~ <input type="time" id="nightEnd" class="num" value="07:00" /></span>
+    </div>
     <div class="frow"><span>🎭 拟人随机延迟</span><input type="checkbox" id="humanize" class="tg" checked /></div>
     <div class="frow"><span>失败自动重试（最多 3 次）</span><input type="checkbox" id="autoRetry" class="tg" checked /></div>
     <div class="frow"><span>全面检测（每章 2 次额度）</span><input type="checkbox" id="fullDetection" class="tg" checked /></div>
     <div class="frow"><span>声明使用 AI</span>
       <select id="useAI" class="pill"><option value="no" selected>否</option><option value="yes">是</option></select>
     </div>
+    <div class="hintrow">⚠️ 番茄自 2025-09 起要求 AI 生成内容如实标注，请按实际情况选择「是/否」。</div>
     <div class="frow"><span>🧪 试填模式（只填不发）</span><input type="checkbox" id="dryRun" class="tg" /></div>
   </fieldset>
 

@@ -358,39 +358,63 @@
     setTimeout(processNext, 1000 * pace());
   }
 
+  // #2.3 夜间避让：判断某时刻是否落在"不发布"时段（默认 23:00~07:00，跨午夜）
+  function isNightTime(ms) {
+    const s = session.settings || {};
+    if (!s.nightAvoid) return false;
+    const toMin = (t) => { const [h, m] = (t || "00:00").split(":").map(Number); return h * 60 + m; };
+    const ns = toMin(s.nightStart || "23:00");
+    const ne = toMin(s.nightEnd || "07:00");
+    const d = new Date(ms); const cur = d.getHours() * 60 + d.getMinutes();
+    return ns < ne ? (cur >= ns && cur < ne) : (cur >= ns || cur < ne);
+  }
+
   // ---------- 发布时间计算 ----------
-  // 返回 'now'（立即）或 ISO 字符串（定时）
+  // 返回 'now'（立即）或 ISO 字符串（定时）。开启夜间避让时，跳过夜间档位顺延到下一个白天档，
+  // 而不是堆到早上某一刻（避免撞档 + 章序保持）。
   function computePublishTime(index) {
     const s = session.settings || {};
     if (s.publishMode === "immediate" || !s.publishMode) return "now";
 
     if (s.publishMode === "custom" && s.customStart) {
-      // 首章 = customStart，后续每小时一章
+      // 首章 = customStart，后续每小时一章；夜间档跳过
       const base = new Date(s.customStart);
-      base.setHours(base.getHours() + index);
-      return base.toISOString();
+      let count = 0;
+      for (let i = 0; i < 24 * 3650; i++) {
+        const d = new Date(base); d.setHours(d.getHours() + i);
+        if (isNightTime(d.getTime())) continue;
+        if (count === index) return d.toISOString();
+        count++;
+      }
+      return "now";
     }
 
     if (s.publishMode === "auto") {
-      // 每天 N 章，当天内从 startHour 起按 24/N 小时平均分配；日期从 scheduleStartDate 起递增
+      // 每天 N 章，当天内从 startHour 起按 24/N 小时平均分配；日期从 scheduleStartDate 起递增。
+      // 枚举 cadence 档位、跳过夜间档，取第 index 个允许档位（未开夜间避让时与原 1:1 映射等价）。
       const N = Math.max(1, s.dailyChapters || 1);
       const [hh, mm] = (s.startHour || "06:00").split(":").map(Number);
       const baseMin = hh * 60 + mm;
-      const stepMin = Math.floor(1440 / N);      // 一天均分到 N 个时段
-      const day = Math.floor(index / N);
-      const slot = index % N;
-
-      const start = session.scheduleStartDate
+      const stepMin = Math.floor(1440 / N);
+      const base = session.scheduleStartDate
         ? new Date(session.scheduleStartDate + "T00:00:00")
         : (() => { const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(0, 0, 0, 0); return d; })();
 
-      start.setDate(start.getDate() + day);
-      start.setMinutes(baseMin + slot * stepMin); // setMinutes 会自动进位到小时
-
-      // #2 发布时间随机分钟偏移：打破整点规律，更像人工（minuteJitter 分钟内随机 ±）
-      const mj = s.minuteJitter || 0;
-      if (mj > 0) start.setMinutes(start.getMinutes() + Math.floor((Math.random() * 2 - 1) * mj));
-      return start.toISOString();
+      let count = 0;
+      for (let day = 0; day < 3650; day++) {
+        for (let slot = 0; slot < N; slot++) {
+          const d = new Date(base); d.setDate(d.getDate() + day); d.setMinutes(baseMin + slot * stepMin);
+          if (isNightTime(d.getTime())) continue; // 跳过夜间档
+          if (count === index) {
+            // #2 随机分钟偏移：打破整点规律，更像人工
+            const mj = s.minuteJitter || 0;
+            if (mj > 0) d.setMinutes(d.getMinutes() + Math.floor((Math.random() * 2 - 1) * mj));
+            return d.toISOString();
+          }
+          count++;
+        }
+      }
+      return "now";
     }
     return "now";
   }
@@ -439,7 +463,7 @@
       for (let i = 0; i < 24 * 90; i++) { // 最多往后 90 天的每小时档
         const d = new Date(base); d.setHours(d.getHours() + i);
         const ms = d.getTime();
-        if (ms > afterMs && !taken.has(minKey(ms))) return ms;
+        if (ms > afterMs && !isNightTime(ms) && !taken.has(minKey(ms))) return ms;
       }
       return null;
     }
@@ -453,7 +477,7 @@
       for (let slot = 0; slot < N; slot++) {
         const d = new Date(start); d.setDate(d.getDate() + day); d.setMinutes(baseMin + slot * stepMin);
         const ms = d.getTime();
-        if (ms > afterMs && !taken.has(minKey(ms))) return ms;
+        if (ms > afterMs && !isNightTime(ms) && !taken.has(minKey(ms))) return ms;
       }
     }
     return null;
