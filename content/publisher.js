@@ -15,9 +15,11 @@
 
   let processing = false;
   let currentTask = null;     // 当前正在发布的章节（含 publishTime）
+  let currentSessionId = null; // 当前会话 id（风控暂停信号要用）
   let currentSettings = {};   // 本次会话的设置（dryRun / detectionMode 等）
   let dialogHandled = false;  // 发布设置对话框是否已处理（防重复）
   let submitted = false;      // 是否已点"下一步"创建了章节（失败后据此决定能否重试，防重复发布）
+  let batchPaused = false;    // #2.1 检测到风控(验证码/账号异常)：暂停整批，保留本页供人工处理
   let paceFactor = 1;         // 操作节奏倍率（>1 更慢，降低出错率），来自设置
   let humanize = true;        // 拟人随机延迟（降低被识别为工具的概率）
 
@@ -144,6 +146,27 @@
     return { reason: "其它", detail: msg };
   }
 
+  // #2.1 风控信号检测：验证码/滑块、账号或登录异常。命中返回原因字符串，否则 null。
+  // 保守判定（误报会停掉整批，代价高）：优先认专用验证码容器，文案匹配收紧。
+  function detectRiskControl() {
+    if (document.querySelector(
+      ".captcha_verify_container, #captcha-verify-image, .secsdk-captcha-drag-icon, .vc-captcha, iframe[src*='captcha']"
+    )) return "验证码/滑块验证";
+    const body = document.body ? document.body.textContent || "" : "";
+    if (/请完成(安全)?验证|拖动滑块完成|完成拼图验证|向右滑动完成验证/.test(body)) return "需要安全验证";
+    if (/登录已失效|登录状态已过期|请重新登录|账号存在安全风险|账号异常，请/.test(body)) return "账号/登录异常";
+    return null;
+  }
+
+  // 命中风控：通知调度器暂停整批，保留本页供用户处理，不上报失败、不关页
+  function signalRiskPause(reason) {
+    if (batchPaused) return;
+    batchPaused = true;
+    dlog("🛑 风控暂停：" + reason);
+    setStatus("🛑 检测到「" + reason + "」：已暂停全部上传，请在本页完成处理后再重新开始", "error");
+    try { chrome.runtime.sendMessage({ type: "PAUSE_BATCH", sessionId: currentSessionId, reason }); } catch (_) {}
+  }
+
   // 主动向后台拉取本标签页要发布的章节（规避 background 推送的竞态）
   requestTaskWithRetry();
 
@@ -166,8 +189,13 @@
     if (processing) return;
     processing = true;
     currentTask = task;
+    currentSessionId = sessionId;
     dialogHandled = false;
     submitted = false;
+
+    // #2.1 进页就先查风控：若已弹验证码/账号异常，立刻暂停整批，别再操作
+    const earlyRisk = detectRiskControl();
+    if (earlyRisk) { signalRiskPause(earlyRisk); processing = false; return; }
     dlog(`▼ 开始：第${task.chapterNumber}章「${task.title}」 正文${(task.content || "").length}字 发布时间=${task.publishTime || "now"}`);
 
     try {
@@ -227,6 +255,8 @@
       // 通知调度器本章完成；rateLimited 让调度器自适应降速（这章虽成功但触发过限流）
       chrome.runtime.sendMessage({ type: "TASK_DONE", taskId: task.id, sessionId, rateLimited: sawRateLimit });
     } catch (e) {
+      // 风控已暂停整批：保留本页供用户处理，不上报失败、不关页（PAUSE_BATCH 已发出）
+      if (batchPaused) { return; } // finally 仍会把 processing 置回
       // 已点过下一步(submitted)的失败由调度器防重复兜底处理，属可控情况 → 用 warn 不刷红
       (submitted ? console.warn : console.error)("本章未确认成功:", e.message || e);
       const { reason, detail } = classifyFailure(e);
@@ -341,6 +371,9 @@
       let detectTicks = 0;
       const timer = setInterval(async () => {
         n++;
+        // #2.1 风控优先：提交后若弹出验证码/账号异常，立即停整批，不再点任何按钮
+        const risk = detectRiskControl();
+        if (risk) { clearInterval(timer); signalRiskPause(risk); resolve(false); return; }
         // 成功标志：跳转回章节管理页
         if (/\/main\/writer\/chapter-manage\/\d+/.test(location.href)) {
           clearInterval(timer);

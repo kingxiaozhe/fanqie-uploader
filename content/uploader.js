@@ -29,6 +29,7 @@
       if (msg.type === "TASK_DONE") onTaskDone(msg.taskId, msg.rateLimited);
       else if (msg.type === "TASK_FAILED") onTaskFailed(msg.taskId, msg.submitted, msg.reason, msg.detail, msg.rateLimited);
       else if (msg.type === "TASK_STOPPED") onTaskStopped(msg.taskId);
+      else if (msg.type === "PAUSE_BATCH") onBatchPaused(msg.reason);
       else if (msg.type === "RESUME_UPLOAD") resumeUpload();
       sendResponse?.({ success: true });
       return true;
@@ -266,6 +267,20 @@
     busy = false;
     setIndicator("🔁 重发失败章节…", "info");
     detectAndAct();
+  }
+
+  // #2.1 发布器检测到风控（验证码/账号异常）→ 暂停整批并桌面告警，绝不硬闯
+  async function onBatchPaused(reason) {
+    if (!session) return;
+    clearWatchdog();
+    awaitingTaskId = null;
+    busy = false;
+    session.status = "stopped";
+    await chrome.storage.local.set({ upload_control: "stop" }); // 让在途的 processNext 也停下
+    await saveSession();
+    rateBackoff = 1; // 重置降速，下次重新开始干净起步
+    setIndicator(`🛑 检测到风控（${reason || "安全验证"}），已自动暂停。处理完可重新开始/续传`, "error");
+    chrome.runtime.sendMessage({ type: "NOTIFY", message: `检测到风控（${reason || "安全验证"}），已自动暂停上传，请人工处理后再继续` });
   }
 
   // 发布器在提交前响应了停止信号——本章未创建，干净停下
