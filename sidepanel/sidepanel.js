@@ -39,9 +39,10 @@ $("exportReport").addEventListener("click", async () => {
   if (!s || !s.tasks?.length) { alert("暂无任务可导出"); return; }
   const label = (st) => (st === "uploaded" ? "已发布" : st === "failed" ? "失败" : "待发布");
   const esc = (v) => `"${String(v == null ? "" : v).replace(/"/g, '""')}"`;
-  const head = "章节号,标题,状态,计划发布时间,字数\n";
+  const head = "章节号,标题,状态,计划发布时间,字数,失败原因\n";
   const body = s.tasks.map((t) =>
-    [t.chapterNumber, t.title, label(t.status), t.publishTime && t.publishTime !== "now" ? t.publishTime : "立即/未排", t.wordCount || ""]
+    [t.chapterNumber, t.title, label(t.status), t.publishTime && t.publishTime !== "now" ? t.publishTime : "立即/未排", t.wordCount || "",
+     t.status === "failed" ? (t.failReason || "") + (t.failDetail ? " · " + t.failDetail : "") : ""]
       .map(esc).join(",")
   ).join("\n");
   const blob = new Blob(["﻿" + head + body], { type: "text/csv;charset=utf-8" });
@@ -113,10 +114,14 @@ function render(session) {
     row.className = "item";
     const isCur = i === session.currentIndex && running;
     const dot = isCur ? "run" : t.status === "uploaded" ? "ok" : t.status === "failed" ? "fail" : "wait";
+    // 失败章显示原因（鼠标悬停看细节）；其余显示计划发布时间
+    const mid = (t.status === "failed" && t.failReason)
+      ? `<span class="time" style="color:var(--fail)" title="${esc(t.failDetail || t.failReason)}">${esc(t.failReason)}</span>`
+      : (t.publishTime && t.publishTime !== "now" ? `<span class="time">${fmt(t.publishTime)}</span>` : "");
     row.innerHTML =
       `<span class="dot ${dot}"></span>` +
       `<span class="t" title="${esc(t.title)}">第${t.chapterNumber || "?"}章 · ${esc(t.title)}</span>` +
-      (t.publishTime && t.publishTime !== "now" ? `<span class="time">${fmt(t.publishTime)}</span>` : "") +
+      mid +
       `<span class="badge ${badgeClass(t.status)}">${isCur ? "发布中" : badgeText(t.status)}</span>`;
     list.appendChild(row);
   });

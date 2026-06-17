@@ -109,6 +109,7 @@
 
   // 接收 net-hook 截获的"发布接口"权威结果（成功与否以番茄接口返回为准）
   let netPublishResult = null;
+  let sawRateLimit = false; // 本章是否出现过限流(-1010)——用于自适应降速 + 失败归类
   // 暂时性限流（-1010 操作太频繁 / 稍后再试）：番茄前端会自动重发到成功，
   // 不能当成终局失败——否则轮询恰好先抓到这一条就会把已成功的章节误判为失败。
   const isTransientFail = (r) =>
@@ -119,10 +120,29 @@
   window.addEventListener("message", (e) => {
     if (e.source === window && e.data && e.data.__fqNet && e.data.type === "publish-result") {
       const transient = isTransientFail(e.data);
+      if (transient) sawRateLimit = true;
       if (!transient) netPublishResult = e.data; // 只采信终局结果；限流条目仅记录、继续等真正的返回
       dlog(`🔌 发布接口返回 ok=${e.data.ok} code=${e.data.code} status=${e.data.status} msg=${e.data.message || ""}${transient ? " ⏳(限流·忽略,等番茄自动重试)" : ""}`);
     }
   });
+
+  // 失败原因归类：给调度器/进度面板/导出报告一个可读的分类 + 细节
+  function classifyFailure(e) {
+    const msg = ((e && (e.message || e)) || "") + "";
+    const r = netPublishResult; // 终局 API 失败（非限流）
+    if (r && r.ok === false) {
+      const m = r.message || "";
+      if (/违禁|敏感|风险|违规|涉黄|涉政|色情|暴力/.test(m)) return { reason: "违禁内容", detail: m };
+      if (/字数|过短|过长|不能为空|为空|格式|校验|不合法|标题|重复/.test(m)) return { reason: "校验不通过", detail: m };
+      return { reason: "发布被拒", detail: m || ("code=" + r.code) };
+    }
+    if (sawRateLimit) return { reason: "限流", detail: "操作太频繁，番茄多次返回 -1010" };
+    if (/正文/.test(msg)) return { reason: "正文未填入", detail: msg };
+    if (/未找到|找不到/.test(msg)) return { reason: "页面元素缺失", detail: msg };
+    if (/超时|未跳转|未确认/.test(msg)) return { reason: "超时未确认", detail: msg };
+    if (/校验|检测/.test(msg)) return { reason: "校验不通过", detail: msg };
+    return { reason: "其它", detail: msg };
+  }
 
   // 主动向后台拉取本标签页要发布的章节（规避 background 推送的竞态）
   requestTaskWithRetry();
@@ -204,15 +224,17 @@
       if (!ok) throw new Error("未能确认发布成功（超时或未跳转回章节管理页）");
 
       setStatus("🎉 发布成功，本页即将关闭", "success");
-      // 通知调度器本章完成；发布 tab 由后台收到 TASK_DONE 后统一关闭（更可靠）
-      chrome.runtime.sendMessage({ type: "TASK_DONE", taskId: task.id, sessionId });
+      // 通知调度器本章完成；rateLimited 让调度器自适应降速（这章虽成功但触发过限流）
+      chrome.runtime.sendMessage({ type: "TASK_DONE", taskId: task.id, sessionId, rateLimited: sawRateLimit });
     } catch (e) {
       // 已点过下一步(submitted)的失败由调度器防重复兜底处理，属可控情况 → 用 warn 不刷红
       (submitted ? console.warn : console.error)("本章未确认成功:", e.message || e);
+      const { reason, detail } = classifyFailure(e);
       setStatus("⚠️ 本章未确认成功：" + (e.message || e), "error");
+      dlog(`失败归类：[${reason}] ${detail}`);
       if (!DEBUG) {
-        // 带上 submitted：若已点过下一步(章节可能已创建)，调度器不再重试，避免重复发布
-        chrome.runtime.sendMessage({ type: "TASK_FAILED", taskId: task.id, sessionId, submitted });
+        // 带上 submitted（防重复）+ reason/detail（失败归类）+ rateLimited（自适应降速）
+        chrome.runtime.sendMessage({ type: "TASK_FAILED", taskId: task.id, sessionId, submitted, reason, detail, rateLimited: sawRateLimit });
         setTimeout(() => chrome.runtime.sendMessage({ type: "CLOSE_TAB" }), 1500);
       }
       // DEBUG=true：不关页、不上报失败，停在原地让你看横幅卡在哪一步

@@ -17,6 +17,7 @@
   let awaitingTaskId = null; // 当前正在等待结果的章节 id（防重复推进 + 看门狗用）
   let watchdog = null;       // 看门狗计时器：本章超时无响应则按失败处理
   const CHAPTER_TIMEOUT = 300000; // 单章最长等待 5 分钟（风险检测可能较久 + 慢节奏留余量）
+  let rateBackoff = 1;       // #1.2 自适应限流降速倍率：触发 -1010 时放大章间间隔，平稳后回落（1~4）
 
   init();
 
@@ -25,8 +26,8 @@
     createIndicator();
 
     chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-      if (msg.type === "TASK_DONE") onTaskDone(msg.taskId);
-      else if (msg.type === "TASK_FAILED") onTaskFailed(msg.taskId, msg.submitted);
+      if (msg.type === "TASK_DONE") onTaskDone(msg.taskId, msg.rateLimited);
+      else if (msg.type === "TASK_FAILED") onTaskFailed(msg.taskId, msg.submitted, msg.reason, msg.detail, msg.rateLimited);
       else if (msg.type === "TASK_STOPPED") onTaskStopped(msg.taskId);
       else if (msg.type === "RESUME_UPLOAD") resumeUpload();
       sendResponse?.({ success: true });
@@ -228,6 +229,11 @@
       waitMs = Math.round((lo + Math.random() * (hi - lo)) * 1000);
       setIndicator(`⏳ 随机等待 ${Math.round(waitMs / 1000)}s 后发下一章（${lo}~${hi}s）…`, "info");
     }
+    // #1.2 自适应降速：番茄触发过限流(-1010)时放大间隔，平稳后自动回落
+    if (rateBackoff > 1.05) {
+      waitMs = Math.round(waitMs * rateBackoff);
+      setIndicator(`🐢 检测到限流，降速中（×${rateBackoff.toFixed(1)}）等待 ${Math.round(waitMs / 1000)}s…`, "warning");
+    }
     await new Promise((r) => setTimeout(r, waitMs)); // 用精确秒数，不叠加节奏倍率
     awaitingTaskId = task.id;
     chrome.runtime.sendMessage({
@@ -246,7 +252,7 @@
       if (taskId !== awaitingTaskId) return;
       console.warn("⏰ 本章超时无响应，按失败处理:", taskId);
       setIndicator("⏰ 本章超时，自动处理", "warning");
-      onTaskFailed(taskId);
+      onTaskFailed(taskId, false, "超时未确认", "看门狗：单章 5 分钟无响应", false);
     }, CHAPTER_TIMEOUT);
   }
   function clearWatchdog() { if (watchdog) { clearTimeout(watchdog); watchdog = null; } }
@@ -273,12 +279,19 @@
     busy = false;
   }
 
-  async function onTaskDone(taskId) {
+  // #1.2 自适应限流降速：触发过 -1010 就放大章间间隔（×1.6，上限 4），平稳一章回落（×0.8，下限 1）
+  function noteRateSignal(rateLimited) {
+    if (rateLimited) rateBackoff = Math.min(4, rateBackoff * 1.6);
+    else rateBackoff = Math.max(1, rateBackoff * 0.8);
+  }
+
+  async function onTaskDone(taskId, rateLimited) {
     if (!session || taskId !== awaitingTaskId) return; // 忽略过期/重复消息
     clearWatchdog();
     awaitingTaskId = null;
+    noteRateSignal(rateLimited);
     const t = session.tasks.find((x) => x.id === taskId);
-    if (t) t.status = "uploaded";
+    if (t) { t.status = "uploaded"; delete t.failReason; delete t.failDetail; }
     session.runCount = (session.runCount || 0) + 1; // #1 计入本次已发
     console.log("✅ 本章完成:", taskId);
     session.currentIndex += 1;
@@ -286,10 +299,11 @@
     setTimeout(processNext, 1000 * pace());
   }
 
-  async function onTaskFailed(taskId, submitted) {
+  async function onTaskFailed(taskId, submitted, reason, detail, rateLimited) {
     if (!session || taskId !== awaitingTaskId) return; // 忽略过期/重复消息
     clearWatchdog();
     awaitingTaskId = null;
+    noteRateSignal(rateLimited);
     const s = session.settings || {};
     const used = session.retries[taskId] || 0;
     const task = session.tasks.find((x) => x.id === taskId);
@@ -298,7 +312,11 @@
     // 此时绝不重试（重试会再建一个=重复）。能在列表里查到的标记"已发"，查不到的标记"失败"。
     const exists = task && (await isChapterAlreadyPublished(task));
     if (submitted || exists) {
-      if (task) task.status = exists ? "uploaded" : "failed";
+      if (task) {
+        task.status = exists ? "uploaded" : "failed";
+        if (exists) { delete task.failReason; delete task.failDetail; }
+        else { task.failReason = reason || "其它"; task.failDetail = detail || ""; }
+      }
       console.log(`⏭️ 第${session.currentIndex + 1}章不重试(submitted=${!!submitted})，避免重复:`, task?.title);
       setIndicator(`⏭️ 第 ${session.currentIndex + 1} 章已创建/已存在，跳过（防重复）`, "warning");
       session.currentIndex += 1;
@@ -316,10 +334,10 @@
     }
 
     const t = session.tasks.find((x) => x.id === taskId);
-    if (t) t.status = "failed";
-    console.warn("❌ 本章最终失败，跳过:", taskId);
-    // #3 失败时桌面通知，批量跑不用一直盯着
-    chrome.runtime.sendMessage({ type: "NOTIFY", message: `章节发布失败：${t?.title || taskId}（已跳过，可稍后重发）` });
+    if (t) { t.status = "failed"; t.failReason = reason || "其它"; t.failDetail = detail || ""; }
+    console.warn("❌ 本章最终失败，跳过:", taskId, reason || "");
+    // #3 失败时桌面通知，批量跑不用一直盯着（带上失败原因）
+    chrome.runtime.sendMessage({ type: "NOTIFY", message: `章节发布失败：${t?.title || taskId}（${reason || "原因未知"}，可稍后重发）` });
     session.currentIndex += 1;
     await saveSession();
     setTimeout(processNext, 1000 * pace());
