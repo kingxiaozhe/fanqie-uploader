@@ -107,12 +107,20 @@
       console.log("📅 定时起始日期:", session.scheduleStartDate);
     }
 
-    // ③ 一次性按"本次待发章节的序号"算好每章发布时间（跳过已上传的，序号才不会错位）
-    let ord = 0;
-    for (const t of session.tasks) {
-      if (t.status === "uploaded") continue;
-      t.publishTime = computePublishTime(ord);
-      ord++;
+    // ③ 计算每章发布时间
+    if (session.rescheduleMode === "retry") {
+      // 重发失败章：把"待发"章放回【合适的时段】——原定时间仍在未来就沿用，
+      // 已过去/为立即则顺延到"现在之后最近的一个空闲发布档位"，绝不甩到队尾。
+      assignRetryTimes();
+      delete session.rescheduleMode;
+    } else {
+      // 正常批次：按"本次待发章节的序号"一次性排好（跳过已上传的，序号才不会错位）
+      let ord = 0;
+      for (const t of session.tasks) {
+        if (t.status === "uploaded") continue;
+        t.publishTime = computePublishTime(ord);
+        ord++;
+      }
     }
     await saveSession();
 
@@ -352,6 +360,70 @@
       return start.toISOString();
     }
     return "now";
+  }
+
+  // ---------- 重发失败章：合适时段排期 ----------
+  // 规则：待发章的原定时间仍在未来 → 沿用（它的"坑"还留着）；
+  //       已过去/为立即 → 顺延到"现在之后最近的一个【空闲】发布档位"（按 cadence），不甩队尾。
+  // 已发布章节占用的档位会被避开，待发章按章节顺序依次拿靠前的空档，保持章序与时间一致。
+  function assignRetryTimes() {
+    const s = session.settings || {};
+    // 立即模式：本来就不排期，全部立即
+    if (s.publishMode === "immediate" || !s.publishMode) {
+      for (const t of session.tasks) if (t.status !== "uploaded") t.publishTime = "now";
+      return;
+    }
+    const nowMs = Date.now() + 60 * 1000; // 留 1 分钟缓冲，避开"刚好现在"
+    const minKey = (ms) => Math.floor(ms / 60000); // 分钟级去重，防撞档
+    const taken = new Set();
+    // 先把已发布章节占用的时段记下
+    for (const t of session.tasks) {
+      if (t.status === "uploaded" && t.publishTime && t.publishTime !== "now") {
+        const ms = Date.parse(t.publishTime);
+        if (!isNaN(ms)) taken.add(minKey(ms));
+      }
+    }
+    // 按章节顺序为待发章分配（靠前的章拿靠前的档位）
+    for (const t of session.tasks) {
+      if (t.status === "uploaded") continue;
+      const origMs = t.publishTime && t.publishTime !== "now" ? Date.parse(t.publishTime) : NaN;
+      if (!isNaN(origMs) && origMs > nowMs && !taken.has(minKey(origMs))) {
+        taken.add(minKey(origMs)); // 原定时间仍在未来且没被占 → 沿用
+        continue;
+      }
+      const slotMs = nextFreeCadenceSlot(nowMs, taken, minKey);
+      t.publishTime = slotMs ? new Date(slotMs).toISOString() : "now";
+      if (slotMs) taken.add(minKey(slotMs));
+    }
+  }
+
+  // 在 cadence（auto=每日 N 档按 24/N 平均；custom=每小时一档）里，
+  // 找"晚于 afterMs 且未被 taken 占用"的最早档位，返回毫秒；找不到返回 null。
+  function nextFreeCadenceSlot(afterMs, taken, minKey) {
+    const s = session.settings || {};
+    if (s.publishMode === "custom" && s.customStart) {
+      const base = new Date(s.customStart);
+      for (let i = 0; i < 24 * 90; i++) { // 最多往后 90 天的每小时档
+        const d = new Date(base); d.setHours(d.getHours() + i);
+        const ms = d.getTime();
+        if (ms > afterMs && !taken.has(minKey(ms))) return ms;
+      }
+      return null;
+    }
+    // auto
+    const N = Math.max(1, s.dailyChapters || 1);
+    const [hh, mm] = (s.startHour || "06:00").split(":").map(Number);
+    const baseMin = hh * 60 + mm;
+    const stepMin = Math.floor(1440 / N);
+    const start = new Date(afterMs); start.setHours(0, 0, 0, 0);
+    for (let day = 0; day < 365; day++) {
+      for (let slot = 0; slot < N; slot++) {
+        const d = new Date(start); d.setDate(d.getDate() + day); d.setMinutes(baseMin + slot * stepMin);
+        const ms = d.getTime();
+        if (ms > afterMs && !taken.has(minKey(ms))) return ms;
+      }
+    }
+    return null;
   }
 
   // ---------- 同步已上传章节 ----------
