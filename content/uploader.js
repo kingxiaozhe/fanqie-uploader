@@ -95,7 +95,7 @@
 
     // ① 先同步：把页面上已存在的章节标记为已上传，避免重复发
     await delay(1500); // 等表格渲染
-    const synced = syncUploadedChapters();
+    const synced = await syncUploadedChapters();
     if (synced > 0) {
       setIndicator(`🔄 已同步 ${synced} 章为"已上传"，将跳过`, "info");
       await saveSession();
@@ -445,10 +445,9 @@
   }
 
   // ---------- 同步已上传章节 ----------
-  // 抓取章节管理页表格，按章节号/标题匹配，把对应任务标记为 uploaded。
-  // 注意：脚手架只读当前页；多分页可扩展为隐藏 iframe 逐页抓取。
-  function syncUploadedChapters() {
-    const published = scrapePublishedChapters();
+  // 取【全量】已创建章节（含定时未发），按章节号/标题匹配，把对应任务标记为 uploaded，避免重复发。
+  async function syncUploadedChapters() {
+    const published = await getPublishedChapters();
     if (!published.length) return 0;
 
     let count = 0;
@@ -463,8 +462,62 @@
         count++;
       }
     }
-    console.log(`🔄 同步：页面已发布 ${published.length} 章，匹配标记 ${count} 章`);
+    console.log(`🔄 同步：已存在 ${published.length} 章，匹配标记 ${count} 章`);
     return count;
+  }
+
+  // #1.1 已创建章节的统一来源：优先调番茄"章节列表"接口拿【全量·跨分页】，失败回退 DOM 抓当前页。
+  // 解决"章节多到翻页后，防重复只看当前页 → 漏判/重发"的问题。
+  async function getPublishedChapters() {
+    const api = await fetchPublishedViaApi();
+    const useApi = !!(api && api.length);
+    // 来源变化时记一条运行日志（首次成功 / 后续回退），方便导出日志核对，不刷屏
+    const src = useApi ? "api" : "dom";
+    if (src !== lastPubSource) {
+      lastPubSource = src;
+      const text = useApi
+        ? `📡 章节列表接口可用：全量同步 ${api.length} 章（跨分页）`
+        : "↩️ 章节列表接口不可用，回退 DOM 抓取（仅当前页，多分页可能漏判）";
+      try { chrome.runtime.sendMessage({ type: "LOG", src: "uploader", text }); } catch (_) {}
+    }
+    return useApi ? api : scrapePublishedChapters();
+  }
+  let lastPubSource = null;
+
+  // 直接同源调用 chapter_list 接口，翻完所有页返回 [{title, chapterNumber}]。
+  // 任何异常/非 0 返回都返回 null，让上层回退 DOM。不带 msToken/a_bogus（读接口同源 + 会话 cookie 通常即可）。
+  async function fetchPublishedViaApi() {
+    const m = location.href.match(/\/main\/writer\/chapter-manage\/(\d+)/);
+    if (!m) return null;
+    const bookId = m[1];
+    const out = [];
+    const PAGE = 50;
+    try {
+      for (let page = 0; page < 60; page++) { // 上限 60×50=3000 章，足够任何长篇
+        const url = "https://fanqienovel.com/api/author/chapter/chapter_list/v1" +
+          `?aid=2503&app_name=muye_novel&book_id=${bookId}` +
+          `&page_index=${page}&page_count=${PAGE}&status=0` +
+          "&must_have_correction_feedback=0&need_correction_feedback_num=1&sort=";
+        const resp = await fetch(url, { credentials: "include", headers: { accept: "application/json, text/plain, */*" } });
+        if (!resp.ok) return out.length ? out : null;
+        const j = await resp.json();
+        if (!j || j.code !== 0 || !j.data) return out.length ? out : null;
+        const items = j.data.item_list || [];
+        for (const it of items) {
+          const title = (it.title || "").trim();
+          if (!title) continue;
+          const cm = title.match(/第\s*(\d+)\s*章/);
+          out.push({ title, chapterNumber: cm ? parseInt(cm[1], 10) : null });
+        }
+        const total = j.data.total_count || 0;
+        if (!items.length || out.length >= total) break; // 翻完
+      }
+      if (out.length) console.log(`📡 接口同步：已创建 ${out.length} 章（全量·跨分页）`);
+      return out.length ? out : [];
+    } catch (e) {
+      console.warn("章节列表接口异常：", e?.message || e);
+      return out.length ? out : null;
+    }
   }
 
   function scrapePublishedChapters() {
@@ -486,10 +539,10 @@
     return !!x && (x === y || x.includes(y) || y.includes(x));
   }
 
-  // 防重复：检查这一章是否已存在于章节管理页（按章节号或标题匹配）
+  // 防重复：检查这一章是否已存在（按章节号或标题匹配，全量·跨分页）
   async function isChapterAlreadyPublished(task) {
-    await delay(800); // 给页面一点时间刷新出新章
-    const published = scrapePublishedChapters();
+    await delay(800); // 给页面/接口一点时间刷新出新章
+    const published = await getPublishedChapters();
     return published.some((p) =>
       (task.chapterNumber && p.chapterNumber === task.chapterNumber) ||
       sameTitle(p.title, task.title)
