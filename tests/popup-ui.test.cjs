@@ -74,6 +74,20 @@ const root = path.join(__dirname, "..");
     ok("collectSettings 含 nightStart/End", ("nightStart" in cs) && ("nightEnd" in cs));
     applyPreset("conservative");
     ok("设置写入 storage", window.__store.popup_settings && window.__store.popup_settings.gapMin === 60);
+
+    // 移除已发布章节（真实 dropPublished / sameTitleLoose）
+    tasks = [
+      { id: 1, chapterNumber: 1, title: "第1章 甲", selected: true },
+      { id: 2, chapterNumber: 2, title: "第2章 乙", selected: true },
+      { id: 3, chapterNumber: 3, title: "第3章 丙", selected: true },
+    ];
+    render();
+    ok("移除前 按钮可见", $("removePublished").hidden === false);
+    const removed = dropPublished([{ title: "第1章 甲", chapterNumber: 1 }, { title: "第 2 章 乙", chapterNumber: 2 }]);
+    ok("移除已发布: 移除数=2", removed === 2, removed);
+    ok("移除已发布: 仅剩第3章", tasks.length === 1 && tasks[0].chapterNumber === 3, tasks.map((t) => t.chapterNumber).join(","));
+    ok("sameTitleLoose 容空格", sameTitleLoose("第2章 乙", "第 2 章 乙"));
+    ok("sameTitleLoose 不同标题不误删", !sameTitleLoose("第1章 甲", "第9章 戊"));
     return out;
   });
 

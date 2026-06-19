@@ -26,6 +26,11 @@
     createIndicator();
 
     chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+      // popup 请求"本书已发布章节"（用于在列表里移除已发章）→ 异步返回 [{title, chapterNumber}]
+      if (msg.type === "GET_PUBLISHED") {
+        getPublishedChapters().then((list) => sendResponse(list || [])).catch(() => sendResponse([]));
+        return true; // 异步响应，保持通道开启
+      }
       if (msg.type === "TASK_DONE") onTaskDone(msg.taskId, msg.rateLimited);
       else if (msg.type === "TASK_FAILED") onTaskFailed(msg.taskId, msg.submitted, msg.reason, msg.detail, msg.rateLimited);
       else if (msg.type === "TASK_STOPPED") onTaskStopped(msg.taskId);

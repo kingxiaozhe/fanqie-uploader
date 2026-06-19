@@ -181,10 +181,70 @@ async function onFolderPicked(e) {
     });
   }
   render();
+  // 自动剔除已发布章节（仅当当前正停在番茄书页面时；静默，有移除才提示）
+  const auto = await fetchPublishedFromPage();
+  if (auto.ok && auto.list.length) {
+    const n = dropPublished(auto.list);
+    if (n) toast(`已自动移除 ${n} 章已发布的，仅保留待发`);
+  }
+}
+
+// ---------- 移除已发布章节：读取当前番茄书的已发列表，从本地任务里剔除 ----------
+function sameTitleLoose(a, b) {
+  const norm = (s) => (s || "").replace(/^\s*第\s*\d+\s*章[\s：:、.．·\-]*/, "").trim();
+  const x = norm(a), y = norm(b);
+  return !!x && (x === y || x.includes(y) || y.includes(x));
+}
+
+async function fetchPublishedFromPage() {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tab || !/fanqienovel\.com\/main\/writer/.test(tab.url || "")) return { ok: false, reason: "no-tab" };
+  try {
+    const list = await chrome.tabs.sendMessage(tab.id, { type: "GET_PUBLISHED" });
+    return { ok: true, list: Array.isArray(list) ? list : [] };
+  } catch {
+    return { ok: false, reason: "no-cs" };
+  }
+}
+
+function dropPublished(published) {
+  const before = tasks.length;
+  tasks = tasks.filter((t) => !published.some((p) =>
+    (t.chapterNumber && p.chapterNumber === t.chapterNumber) || sameTitleLoose(p.title, t.title)
+  ));
+  const removed = before - tasks.length;
+  if (removed) render();
+  return removed;
+}
+
+// 手动按钮：明确反馈每种情况
+$("removePublished").addEventListener("click", async () => {
+  const btn = $("removePublished");
+  const old = btn.textContent;
+  btn.disabled = true; btn.textContent = "读取中…";
+  const r = await fetchPublishedFromPage();
+  btn.disabled = false; btn.textContent = old;
+  if (!r.ok && r.reason === "no-tab") return toast("请先在番茄『章节管理』页打开你的书");
+  if (!r.ok) return toast("读取失败，请刷新番茄页面后重试");
+  if (!r.list.length) return toast("没读到已发布章节（这本书可能还没发过）");
+  const removed = dropPublished(r.list);
+  toast(removed ? `已移除 ${removed} 章已发布的` : "列表里没有已发布的章节");
+});
+
+// 轻量 toast（动态创建，无需改 HTML）
+let toastTimer = null;
+function toast(msg) {
+  let el = $("toast");
+  if (!el) { el = document.createElement("div"); el.id = "toast"; el.className = "toast"; document.body.appendChild(el); }
+  el.textContent = msg;
+  el.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove("show"), 2600);
 }
 
 function render() {
   const list = $("list");
+  $("removePublished").hidden = !tasks.length; // 有章节才显示"移除已发布"
   if (!tasks.length) {
     list.innerHTML = '<div class="empty">尚未选择文件夹</div>';
     $("count").textContent = "未加载";
