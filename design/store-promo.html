@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<style>
+  :root{
+    --accent:#ff5630; --accent-grad:linear-gradient(135deg,#ff7a45,#e62f1f);
+    --ok:#15a05a; --ok-bg:#e7f6ec; --fail:#d83a2f; --fail-bg:#fdeae8;
+    --surface:#fff; --surface-2:#f6f3f0; --text:#221f1d; --muted:#8c857d; --faint:#b4ada4; --border:#ececE8;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font:14px/1.5 "PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;}
+  .slide{display:none;position:relative;overflow:hidden;
+    background:linear-gradient(135deg,#ff7a45 0%,#f1542a 55%,#e62f1f 100%);}
+  .slide:target{display:block;}
+
+  /* ===== 宣传小图块 440×280 ===== */
+  #tile{width:440px;height:280px;}
+  #tile .wrap{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;padding:0 38px;}
+  #tile .logo{display:flex;align-items:center;gap:13px;margin-bottom:18px;}
+  #tile .logo img{width:52px;height:52px;border-radius:13px;box-shadow:0 4px 14px rgba(0,0,0,.2);}
+  #tile .logo .nm{color:#fff;font-size:19px;font-weight:800;line-height:1.25;}
+  #tile h1{color:#fff;font-size:33px;font-weight:850;line-height:1.15;letter-spacing:.01em;
+    text-shadow:0 2px 12px rgba(150,25,12,.3);}
+  #tile p{color:#fff;opacity:.95;font-size:15px;font-weight:600;margin-top:12px;}
+  #tile .dots{position:absolute;right:-40px;top:-40px;width:200px;height:200px;border-radius:50%;
+    background:rgba(255,255,255,.10);}
+  #tile .dots2{position:absolute;right:30px;bottom:-60px;width:140px;height:140px;border-radius:50%;
+    background:rgba(255,255,255,.08);}
+
+  /* ===== 大横幅 1400×560 ===== */
+  #marquee{width:1400px;height:560px;}
+  #marquee .brand{position:absolute;top:50px;left:80px;display:flex;align-items:center;gap:16px;z-index:2;}
+  #marquee .brand img{width:50px;height:50px;border-radius:13px;box-shadow:0 4px 14px rgba(0,0,0,.18);}
+  #marquee .brand .nm{color:#fff;font-size:22px;font-weight:800;}
+  #marquee .head{position:absolute;left:82px;top:150px;max-width:640px;z-index:2;}
+  #marquee .head h1{color:#fff;font-size:60px;font-weight:850;line-height:1.12;letter-spacing:.01em;
+    text-shadow:0 2px 16px rgba(150,25,12,.28);}
+  #marquee .head p{color:#fff;opacity:.95;font-size:23px;font-weight:600;margin-top:18px;}
+  #marquee .head .tags{margin-top:26px;display:flex;flex-direction:column;gap:11px;}
+  #marquee .head .tags span{color:#fff;font-size:18px;font-weight:600;opacity:.96;}
+
+  /* 右侧浮动面板（侧栏进度风格）*/
+  #marquee .stage{position:absolute;right:96px;top:50%;transform:translateY(-50%);z-index:3;}
+  #marquee .panel{width:330px;background:#faf8f6;border-radius:18px;padding:16px 15px;
+    transform:scale(1.18);transform-origin:center right;
+    box-shadow:0 30px 70px rgba(120,20,10,.34),0 4px 14px rgba(0,0,0,.16);}
+  .hd{display:flex;align-items:center;gap:11px;padding:2px 0 14px;}
+  .hd img{width:32px;height:32px;border-radius:9px;}
+  .hd .t{font-size:15px;font-weight:700;color:var(--text);}
+  .hd .s{font-size:11px;color:var(--muted);margin-top:1px;}
+  .stats{display:flex;gap:8px;margin-bottom:12px;}
+  .stat{flex:1;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px 6px;text-align:center;}
+  .stat .n{font-size:22px;font-weight:800;line-height:1.1;}
+  .stat .k{font-size:10.5px;color:var(--muted);margin-top:2px;}
+  .stat.ok .n{color:var(--ok);} .stat.fail .n{color:var(--fail);} .stat.wait .n{color:var(--muted);}
+  .pbar{height:8px;border-radius:4px;background:var(--surface-2);overflow:hidden;}
+  .pbar>i{display:block;height:100%;background:var(--accent-grad);border-radius:4px;}
+  .pmeta{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin:6px 2px 0;}
+  .slist{margin-top:12px;background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;}
+  .sitem{display:flex;align-items:center;gap:9px;padding:9px 12px;border-bottom:1px solid var(--border);font-size:12.5px;color:var(--text);}
+  .sitem:last-child{border-bottom:none;}
+  .dot{width:8px;height:8px;border-radius:50%;flex:none;}
+  .dot.ok{background:var(--ok);} .dot.run{background:var(--accent);} .dot.wait{background:var(--faint);}
+  .sitem .t{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .badge{font-size:10px;font-weight:600;padding:2px 7px;border-radius:7px;flex:none;}
+  .badge.ok{background:var(--ok-bg);color:var(--ok);}
+  .badge.run{background:var(--accent);color:#fff;}
+  .badge.wait{background:var(--surface-2);color:var(--muted);}
+</style>
+</head>
+<body>
+
+<!-- 宣传小图块 440×280 -->
+<div class="slide" id="tile">
+  <div class="dots"></div><div class="dots2"></div>
+  <div class="wrap">
+    <div class="logo"><img src="../icons/icon128.png"><span class="nm">番茄小说<br>批量发布助手</span></div>
+    <h1>整本书<br>一键定时发布</h1>
+    <p>选文件夹，自动排期，省去逐章复制粘贴</p>
+  </div>
+</div>
+
+<!-- 大横幅 1400×560 -->
+<div class="slide" id="marquee">
+  <div class="brand"><img src="../icons/icon128.png"><span class="nm">番茄小说批量发布助手</span></div>
+  <div class="head">
+    <h1>整本书<br>一键定时发布</h1>
+    <p>选好本地章节文件夹，自动批量发到番茄作者后台</p>
+    <div class="tags">
+      <span>✓ 智能定时排期 · 拟人间隔 · 防风控</span>
+      <span>✓ 自动跳过已发布 · 失败一键重发</span>
+      <span>✓ 实时进度 · 数据仅存本地</span>
+    </div>
+  </div>
+  <div class="stage"><div class="panel">
+    <div class="hd"><img src="../icons/icon128.png"><div><div class="t">上传进度</div><div class="s">我的小说 · 共 86 章</div></div></div>
+    <div class="stats">
+      <div class="stat ok"><div class="n">24</div><div class="k">已发布</div></div>
+      <div class="stat fail"><div class="n">0</div><div class="k">失败</div></div>
+      <div class="stat wait"><div class="n">62</div><div class="k">待发布</div></div>
+    </div>
+    <div class="pbar"><i style="width:28%"></i></div>
+    <div class="pmeta"><span>28% · 24/86</span><span>上传中</span></div>
+    <div class="slist">
+      <div class="sitem"><span class="dot ok"></span><span class="t">第24章 · 收网</span><span class="badge ok">已发</span></div>
+      <div class="sitem"><span class="dot run"></span><span class="t">第25章 · 故人来</span><span class="badge run">发布中</span></div>
+      <div class="sitem"><span class="dot wait"></span><span class="t">第26章 · 夜行</span><span class="badge wait">待发</span></div>
+    </div>
+  </div></div>
+</div>
+
+</body>
+</html>
