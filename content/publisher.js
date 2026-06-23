@@ -139,6 +139,7 @@
       return { reason: "发布被拒", detail: m || ("code=" + r.code) };
     }
     if (sawRateLimit) return { reason: "限流", detail: "操作太频繁，番茄多次返回 -1010" };
+    if (/版本冲突/.test(msg)) return { reason: "版本冲突", detail: msg };
     if (/正文/.test(msg)) return { reason: "正文未填入", detail: msg };
     if (/未找到|找不到/.test(msg)) return { reason: "页面元素缺失", detail: msg };
     if (/超时|未跳转|未确认/.test(msg)) return { reason: "超时未确认", detail: msg };
@@ -366,9 +367,10 @@
     };
     if (!clickSubmit()) throw new Error("未找到提交按钮");
 
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       let n = 0;
       let detectTicks = 0;
+      let conflictCount = 0; // 版本冲突被处理的次数——反复出现说明清不掉，快速失败去重试
       const timer = setInterval(async () => {
         n++;
         // #2.1 风控优先：提交后若弹出验证码/账号异常，立即停整批，不再点任何按钮
@@ -390,9 +392,20 @@
           return;
         }
 
-        // 草稿提示 / 版本冲突拦截了"下一步"——清掉后重新点一次"下一步"继续
-        if (dismissDraftPrompt() || dismissVersionConflict()) {
+        // 草稿提示拦截了"下一步"——清掉后重新点一次继续
+        if (dismissDraftPrompt()) {
           setTimeout(clickSubmit, 700);
+          return;
+        }
+        // 版本冲突：选「继续编辑本地」后重点下一步。但若反复出现（清不掉），
+        // 别空等 5 分钟看门狗——到阈值就快速失败，交给调度器立即重试（实测重试即成功）。
+        if (dismissVersionConflict()) {
+          if (++conflictCount >= 6) {
+            clearInterval(timer);
+            reject(new Error("版本冲突反复出现，已中止本章（将自动重试）"));
+            return;
+          }
+          setTimeout(clickSubmit, 1200); // 拉长间隔，避免每秒猛点
           return;
         }
 

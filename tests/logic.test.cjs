@@ -88,6 +88,7 @@ ok("归类: 校验不通过", classifyFailure(new Error("x")).reason === "校验
 netPublishResult = null; sawRateLimit = true;
 ok("归类: 限流", classifyFailure(new Error("x")).reason === "限流");
 netPublishResult = null; sawRateLimit = false;
+ok("归类: 版本冲突", classifyFailure(new Error("版本冲突反复出现，已中止本章（将自动重试）")).reason === "版本冲突");
 ok("归类: 正文未填入", classifyFailure(new Error("正文未成功填入")).reason === "正文未填入");
 ok("归类: 超时未确认", classifyFailure(new Error("未跳转回章节管理页")).reason === "超时未确认");
 
