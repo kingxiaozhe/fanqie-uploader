@@ -42,6 +42,8 @@ content/publisher.js (发布页)   ──TASK_DONE──▶ content/uploader.js 
 
 - 本工具靠**模拟网页操作**实现，番茄前端改版（DOM 结构变化）后，
   `content/publisher.js` 与 `content/uploader.js` 里的 **CSS 选择器需要对照实际页面调整**。
+  - 💡 怀疑改版导致失效时，点 popup 底部 **「🩺 选择器自检」**：会打开一个发布页（只加载、不建章），
+    逐组检测 `SEL` 选择器是否命中，核心选择器失效会标红并指出是哪一个，省去翻日志定位。
 - 番茄使用 React + Arco Design + ProseMirror。代码中已处理"受控组件需派发 input 事件"
   和"富文本按段落塞 `<p>`"两个关键点，但具体类名以番茄当前页面为准。
 - 仅供学习与个人合规使用；请遵守番茄小说的用户协议与平台规则。

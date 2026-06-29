@@ -138,6 +138,9 @@
   #openPanel { flex:none; width:46px; border-radius:11px; background:var(--surface);
     border:1px solid var(--border); color:var(--muted); font-size:15px; }
   .foot { font-size:11px; color:var(--faint); text-align:center; margin-top:11px; }
+  .linkbtn { border:none; background:none; color:var(--muted); font:inherit; font-size:11px;
+    text-decoration:underline; cursor:pointer; padding:0; }
+  .linkbtn:hover { color:var(--accent); }
 </style>
 </head>
 <body>
@@ -243,7 +246,7 @@
     <button id="stopBtn" title="停止">⏹</button>
     <button id="openPanel" title="进度面板">📊</button>
   </div>
-  <div class="foot">设置已自动保存 · 数据仅存本地</div>
+  <div class="foot">设置已自动保存 · 数据仅存本地 · <button id="selfTest" class="linkbtn" title="在发布页检测所有选择器是否命中，番茄改版后用它定位坏点">🩺 选择器自检</button></div>
 
   <script src="popup.js"></script>
 </body>

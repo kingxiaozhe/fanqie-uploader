@@ -23,6 +23,17 @@ $("stopBtn").addEventListener("click", async () => {
   $("stopBtn").textContent = "⏹ 已请求停止";
 });
 
+// 🩺 选择器自检：打开一个发布页做诊断（只加载、不建章），由 publisher.js 检测并弹报告
+$("selfTest").addEventListener("click", async () => {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const m = (tab?.url || "").match(/\/main\/writer\/(?:chapter-manage\/)?(\d+)/);
+  if (!m) { toast("请先在番茄『章节管理』页打开你的书，再点自检"); return; }
+  await chrome.storage.local.set({ fq_selftest: true });
+  const url = `https://fanqienovel.com/main/writer/${m[1]}/publish/?enter_from=newchapter`;
+  await chrome.tabs.create({ url, active: true });
+  window.close();
+});
+
 // 打开侧边进度面板
 $("openPanel").addEventListener("click", async () => {
   try {

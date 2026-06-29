@@ -168,8 +168,95 @@
     try { chrome.runtime.sendMessage({ type: "PAUSE_BATCH", sessionId: currentSessionId, reason }); } catch (_) {}
   }
 
-  // 主动向后台拉取本标签页要发布的章节（规避 background 推送的竞态）
-  requestTaskWithRetry();
+  // 启动：优先响应「选择器自检」请求（popup 打开发布页做诊断，不发布任何章节）；
+  // 否则正常拉取本标签页要发布的章节（规避 background 推送的竞态）。
+  (async () => {
+    try {
+      const { fq_selftest } = await chrome.storage.local.get("fq_selftest");
+      if (fq_selftest) {
+        await chrome.storage.local.remove("fq_selftest"); // 消费一次
+        runSelectorSelfTest();
+        return; // 自检模式：绝不进入发布流程
+      }
+    } catch (_) {}
+    requestTaskWithRetry();
+  })();
+
+  // ============================================================
+  //  🩺 选择器自检：在真实发布页上逐组检测 SEL 选择器是否命中，
+  //  生成一份报告（核心选择器失效会标红）。番茄改版后用它一键定位坏点。
+  // ============================================================
+  // 哪些选择器在「发布页一加载」就应当存在（缺失=真坏）；
+  // 其余只在交互后（点下一步/开弹窗/开日历）才出现，本次只列出不判失败。
+  const SELFTEST_LOADTIME = ["titleInput", "chapterNumberInput", "contentArea", "submitButton"];
+
+  async function runSelectorSelfTest() {
+    setStatus("🩺 选择器自检：等待编辑器加载…");
+    // 等核心元素出现（最多 ~10s），不强制成功——缺了正好是要报告的结果
+    await waitFor(() => findTitleInput() || findContentArea(), { timeout: 10000, interval: 300 });
+    dismissDraftPrompt();
+    dismissVersionConflict();
+
+    const report = [];
+    for (const [key, val] of Object.entries(SEL)) {
+      if (key === "submitText") continue; // 这是按钮文字列表，不是 CSS 选择器
+      const sels = Array.isArray(val) ? val : [val];
+      let hit = null;
+      for (const s of sels) {
+        try { if (document.querySelector(s)) { hit = s; break; } } catch (_) {}
+      }
+      report.push({ key, loadtime: SELFTEST_LOADTIME.includes(key), hit, sels });
+    }
+
+    const miss = report.filter((r) => r.loadtime && !r.hit).map((r) => r.key);
+    dlog(`🩺 选择器自检完成：核心缺失 ${miss.length ? miss.join("、") : "无"}`);
+    setStatus(
+      miss.length
+        ? `🩺 自检：${miss.length} 个核心选择器失效（${miss.join("、")}）—— 番茄可能已改版`
+        : "🩺 自检：核心选择器全部命中 ✓",
+      miss.length ? "error" : "success"
+    );
+    renderSelfTestPanel(report, miss);
+  }
+
+  // 渲染自检报告浮层
+  function renderSelfTestPanel(report, miss) {
+    const old = document.getElementById("fq-selftest-panel");
+    if (old) old.remove();
+    const esc = (s) => (s || "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+    const rowHtml = (r) => {
+      const mark = r.hit ? "✅" : r.loadtime ? "❌" : "➖";
+      const color = r.hit ? "#27ae60" : r.loadtime ? "#e74c3c" : "#8c857d";
+      const detail = r.hit
+        ? `命中：<code>${esc(r.hit)}</code>`
+        : r.loadtime
+          ? `<b>未命中</b>（候选：${r.sels.map((s) => `<code>${esc(s)}</code>`).join(" / ")}）`
+          : `交互后出现，本次不判定（候选：${r.sels.map((s) => `<code>${esc(s)}</code>`).join(" / ")}）`;
+      return `<div style="display:flex;gap:8px;padding:5px 0;border-bottom:1px solid #eee;">
+        <span style="flex:none;color:${color};">${mark}</span>
+        <span style="flex:none;width:150px;font-weight:600;color:${color};">${esc(r.key)}</span>
+        <span style="flex:1;color:#444;word-break:break-all;">${detail}</span></div>`;
+    };
+    const panel = document.createElement("div");
+    panel.id = "fq-selftest-panel";
+    panel.style.cssText =
+      "position:fixed;top:50px;right:20px;z-index:1000000;width:min(620px,92vw);max-height:80vh;overflow:auto;" +
+      "background:#fff;color:#221f1d;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.35);" +
+      "padding:16px 18px;font:13px/1.5 system-ui;";
+    panel.innerHTML =
+      `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <div style="font-size:15px;font-weight:700;">🩺 选择器自检报告</div>
+        <button id="fq-selftest-close" style="border:none;background:#f0f0f0;border-radius:6px;padding:4px 10px;cursor:pointer;font:inherit;">关闭</button>
+       </div>
+       <div style="font-size:12px;color:${miss.length ? "#e74c3c" : "#27ae60"};font-weight:600;margin-bottom:10px;">
+        ${miss.length ? `⚠️ ${miss.length} 个核心选择器失效：${esc(miss.join("、"))} —— 请对照番茄当前页面更新 publisher.js 顶部 SEL` : "✓ 核心选择器全部命中，番茄页面结构与代码一致"}
+       </div>
+       <div style="font-size:11px;color:#8c857d;margin-bottom:8px;">✅命中 · ❌核心失效 · ➖交互后才出现（本次不判定）</div>
+       ${report.map(rowHtml).join("")}
+       <div style="font-size:11px;color:#8c857d;margin-top:10px;">提示：➖项需点「下一步」打开发布弹窗后才会出现，属正常；只有 ❌ 才需要修。报告同时写入运行日志，可在进度面板导出。</div>`;
+    (document.body || document.documentElement).appendChild(panel);
+    document.getElementById("fq-selftest-close")?.addEventListener("click", () => panel.remove());
+  }
 
   function requestTaskWithRetry(attempt = 0) {
     chrome.runtime.sendMessage({ type: "REQUEST_TASK" }, (resp) => {
