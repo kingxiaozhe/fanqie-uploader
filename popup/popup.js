@@ -91,6 +91,7 @@ async function restoreSettings() {
     if (s.nightEnd) $("nightEnd").value = s.nightEnd;
     if (s.detectionMode) $("fullDetection").checked = s.detectionMode === "full";
     if (s.useAI) $("useAI").value = s.useAI;
+    if (typeof s.draftMode === "boolean") $("draftMode").checked = s.draftMode;
     // dryRun（试填模式）不恢复，每次默认关闭，避免下次静默不发布
   }
   // 同步各配置区的显隐
@@ -106,7 +107,7 @@ function saveSettings() {
 
 // 任一设置项变化即保存；并在加载时恢复
 document.querySelectorAll("#settings input, #settings select").forEach((el) =>
-  el.addEventListener("change", saveSettings)
+  el.addEventListener("change", () => { saveSettings(); renderPreview(); })
 );
 // 字数阈值改动时即时刷新列表标红（input 事件覆盖键入与微调）
 $("minWords").addEventListener("input", () => { if (tasks.length) render(); });
@@ -164,6 +165,7 @@ function collectSettings() {
     nightEnd: $("nightEnd").value || "07:00",           // 夜间时段止
     detectionMode: $("fullDetection").checked ? "full" : "basic", // 内容检测方式
     useAI: $("useAI").value,                            // 是否使用AI声明: no | yes
+    draftMode: $("draftMode").checked,                  // 仅存草稿：点下一步建章后取消发布
     dryRun: $("dryRun").checked,                        // 试填模式：只填表不发布
   };
 }
@@ -302,7 +304,8 @@ function renderPreview() {
   const box = $("previewBox");
   const s = collectSettings();
   const selected = tasks.filter((t) => t.selected);
-  if (!selected.length || s.publishMode === "immediate") {
+  // 草稿模式不发布、不排期；立即模式无需预览
+  if (!selected.length || s.draftMode || s.publishMode === "immediate") {
     box.hidden = true;
     return;
   }

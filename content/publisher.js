@@ -512,8 +512,14 @@
           dialogHandled = true;
           clearInterval(timer);
           try {
-            await handlePublishDialog();        // 设 AI/定时 + 点确认发布
-            resolve(await waitForPublishResult()); // 判断是否真的发布成功
+            if (currentSettings.draftMode) {
+              // 📝 仅存草稿：章节已由「下一步」创建，这里取消发布弹窗即可，章节留作草稿
+              await saveAsDraft();
+              resolve(true);
+            } else {
+              await handlePublishDialog();        // 设 AI/定时 + 点确认发布
+              resolve(await waitForPublishResult()); // 判断是否真的发布成功
+            }
           } catch (e) {
             dlog("处理发布对话框失败：" + (e.message || e));
             resolve(false);
@@ -640,6 +646,35 @@
         }
       }, 800);
     });
+  }
+
+  // ---------- 仅存草稿：关闭发布弹窗，章节以「下一步」已创建的草稿保留 ----------
+  // 番茄编辑器是单一自动保存缓冲（逐章会互相覆盖），只有点过「下一步」才会创建一条
+  // 章节记录。所以存草稿 = 走到发布弹窗（章节已建）后取消发布，不点「确认发布」。
+  async function saveAsDraft() {
+    setStatus("📝 仅存草稿：取消发布，章节将作为草稿保留在章节管理页", "success");
+    await delay(400);
+    closePickerDropdowns(); // 先关掉可能打开的日期/时间浮层，避免误触
+    const dlg = document.querySelector(SEL.publishDialog);
+    // 关闭弹窗：优先点关闭图标 / 取消按钮，兜底按 Esc
+    const closeBtn = dlg && (
+      dlg.querySelector(".arco-modal-close-icon, .arco-modal-close .arco-icon, .arco-icon-close") ||
+      [...dlg.querySelectorAll("button")].find((b) => ["取消", "关闭"].includes((b.textContent || "").trim()))
+    );
+    if (closeBtn) { realClick(closeBtn); dlog("存草稿：点关闭/取消按钮"); }
+    else {
+      (document.body || document).dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", keyCode: 27, bubbles: true }));
+      dlog("存草稿：未找到关闭按钮，已按 Esc");
+    }
+    await delay(700);
+    // 番茄可能弹「确认放弃发布?」二次确认——若出现，点主按钮确认放弃（草稿仍在）
+    for (const m of document.querySelectorAll(".arco-modal")) {
+      if (m.classList.contains("publish-confirm-container-new")) continue;
+      const r = m.getBoundingClientRect();
+      if (r.width < 2 || r.height < 2) continue;
+      const p = m.querySelector("button.arco-btn-primary");
+      if (p) { realClick(p); dlog("存草稿：确认放弃发布二次弹窗"); await delay(400); break; }
+    }
   }
 
   // ---------- 发布设置对话框：设定时/立即 + 点确认发布 ----------

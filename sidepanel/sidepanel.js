@@ -37,7 +37,8 @@ $("retryFailed").addEventListener("click", async () => {
 $("exportReport").addEventListener("click", async () => {
   const { upload_session: s } = await chrome.storage.local.get("upload_session");
   if (!s || !s.tasks?.length) { alert("暂无任务可导出"); return; }
-  const label = (st) => (st === "uploaded" ? "已发布" : st === "failed" ? "失败" : "待发布");
+  const draft = !!s.settings?.draftMode;
+  const label = (st) => (st === "uploaded" ? (draft ? "已存草稿" : "已发布") : st === "failed" ? "失败" : (draft ? "待存草稿" : "待发布"));
   const esc = (v) => `"${String(v == null ? "" : v).replace(/"/g, '""')}"`;
   const head = "章节号,标题,状态,计划发布时间,字数,失败原因\n";
   const body = s.tasks.map((t) =>
@@ -86,15 +87,16 @@ function render(session) {
   }
 
   const tasks = session.tasks;
+  const draft = !!session.settings?.draftMode;
   const done = tasks.filter((t) => t.status === "uploaded").length;
   const failed = tasks.filter((t) => t.status === "failed").length;
   const pending = tasks.length - done - failed;
   const pct = Math.round((done / tasks.length) * 100);
   const running = session.status !== "completed" && session.status !== "stopped";
 
-  $("proj").textContent = session.folderName || `共 ${tasks.length} 章`;
+  $("proj").textContent = (session.folderName || `共 ${tasks.length} 章`) + (draft ? " · 📝草稿模式" : "");
   $("summary").innerHTML =
-    `<div class="stat ok"><div class="n">${done}</div><div class="k">已发布</div></div>` +
+    `<div class="stat ok"><div class="n">${done}</div><div class="k">${draft ? "已存草稿" : "已发布"}</div></div>` +
     `<div class="stat fail"><div class="n">${failed}</div><div class="k">失败</div></div>` +
     `<div class="stat wait"><div class="n">${pending}</div><div class="k">待发布</div></div>`;
   $("barfill").style.width = pct + "%";
@@ -122,7 +124,7 @@ function render(session) {
       `<span class="dot ${dot}"></span>` +
       `<span class="t" title="${esc(t.title)}">第${t.chapterNumber || "?"}章 · ${esc(t.title)}</span>` +
       mid +
-      `<span class="badge ${badgeClass(t.status)}">${isCur ? "发布中" : badgeText(t.status)}</span>`;
+      `<span class="badge ${badgeClass(t.status)}">${isCur ? (draft ? "存草稿中" : "发布中") : badgeText(t.status, draft)}</span>`;
     list.appendChild(row);
   });
 }
@@ -131,7 +133,7 @@ function statusLabel(s) {
   return { preparing: "准备中", uploading: "上传中", completed: "已完成", stopped: "已停止" }[s] || s || "—";
 }
 function badgeClass(s) { return s === "uploaded" ? "uploaded" : s === "failed" ? "failed" : "pending"; }
-function badgeText(s) { return s === "uploaded" ? "已发" : s === "failed" ? "失败" : "待发"; }
+function badgeText(s, draft) { return s === "uploaded" ? (draft ? "草稿" : "已发") : s === "failed" ? "失败" : "待发"; }
 
 function fmt(iso) {
   try {
