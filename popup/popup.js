@@ -5,6 +5,19 @@
 
 let tasks = []; // [{ id, fileName, title, chapterNumber, content, wordCount, selected }]
 let folderName = ""; // 选中的文件夹名（= 书名），随会话一路带到进度面板/导出报告
+let sensitiveWords = []; // 敏感词预检词库（用户自定义，存 chrome.storage.local）
+const WORDS_KEY = "fq_sensitive_words";
+
+// 扫描一章命中的敏感词（标题+正文，去重）。词库为空或未开启时返回 []
+function scanSensitive(task) {
+  if (!$("sensitiveCheck").checked || !sensitiveWords.length) return [];
+  const hay = (task.title || "") + "\n" + (task.content || "");
+  const hits = [];
+  for (const w of sensitiveWords) {
+    if (w && hay.includes(w) && !hits.includes(w)) hits.push(w);
+  }
+  return hits;
+}
 
 const $ = (id) => document.getElementById(id);
 
@@ -93,6 +106,9 @@ async function restoreSettings() {
   // 优先本书专属；没有则用全局"上次使用"作为模板（首次配置一本书时不必从零开始）
   const s = (currentBookId && byBook && byBook[currentBookId]) || global;
   syncBookLabel();
+  // 敏感词库（全局共享，与按书设置分开存）
+  const { [WORDS_KEY]: words } = await chrome.storage.local.get(WORDS_KEY);
+  sensitiveWords = Array.isArray(words) ? words : [];
   if (s) {
     if (s.publishMode) {
       const radio = document.querySelector(`input[name="mode"][value="${s.publishMode}"]`);
@@ -117,6 +133,7 @@ async function restoreSettings() {
     if (s.detectionMode) $("fullDetection").checked = s.detectionMode === "full";
     if (s.useAI) $("useAI").value = s.useAI;
     if (typeof s.draftMode === "boolean") $("draftMode").checked = s.draftMode;
+    if (typeof s.sensitiveCheck === "boolean") $("sensitiveCheck").checked = s.sensitiveCheck;
     // dryRun（试填模式）不恢复，每次默认关闭，避免下次静默不发布
   }
   // 同步各配置区的显隐
@@ -144,7 +161,40 @@ document.querySelectorAll("#settings input, #settings select").forEach((el) =>
 );
 // 字数阈值改动时即时刷新列表标红（input 事件覆盖键入与微调）
 $("minWords").addEventListener("input", () => { if (tasks.length) render(); });
+// 敏感词开关切换时重扫列表
+$("sensitiveCheck").addEventListener("change", () => { if (tasks.length) render(); });
+// 编辑敏感词库：弹层里一行一词（或逗号/分号分隔），保存到 storage 并重扫
+$("editWords").addEventListener("click", openWordEditor);
 restoreSettings();
+
+function openWordEditor() {
+  const mask = document.createElement("div");
+  mask.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:100000;display:flex;align-items:center;justify-content:center;";
+  mask.innerHTML = `
+    <div style="background:var(--bg,#fff);color:inherit;width:92%;max-height:86%;border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:8px;box-shadow:0 8px 30px rgba(0,0,0,.3);">
+      <div style="font-weight:600;">🚫 敏感词库（共 <span id="wc">${sensitiveWords.length}</span> 词）</div>
+      <div style="font-size:11px;color:var(--muted,#888);">一行一个词，也可用逗号/分号分隔。词库存在本地、对所有书生效。建议粘贴番茄公布的敏感词或自己的禁词清单。</div>
+      <textarea id="ed-words" placeholder="例如：\n某敏感词\n另一个词" style="font:13px/1.6 system-ui;flex:1;min-height:240px;padding:8px;border:1px solid #ccc;border-radius:6px;resize:vertical;">${escapeHtml(sensitiveWords.join("\n"))}</textarea>
+      <div style="display:flex;justify-content:flex-end;gap:8px;">
+        <button id="ew-cancel" class="ghost">取消</button>
+        <button id="ew-save">保存</button>
+      </div>
+    </div>`;
+  document.body.appendChild(mask);
+  const close = () => mask.remove();
+  mask.addEventListener("click", (e) => { if (e.target === mask) close(); });
+  mask.querySelector("#ew-cancel").addEventListener("click", close);
+  mask.querySelector("#ew-save").addEventListener("click", async () => {
+    const raw = mask.querySelector("#ed-words").value;
+    // 按换行/逗号/分号/顿号切分，去空白去重
+    sensitiveWords = [...new Set(raw.split(/[\n,，;；、]/).map((w) => w.trim()).filter(Boolean))];
+    await chrome.storage.local.set({ [WORDS_KEY]: sensitiveWords });
+    if (sensitiveWords.length && !$("sensitiveCheck").checked) { $("sensitiveCheck").checked = true; saveSettings(); }
+    close();
+    if (tasks.length) render();
+    toast(`已保存 ${sensitiveWords.length} 个敏感词`);
+  });
+}
 
 // #2.2 安全档位：一键套用一组反风控参数（间隔/偏移/上限/拟人/夜间避让）
 const PRESETS = {
@@ -199,6 +249,7 @@ function collectSettings() {
     detectionMode: $("fullDetection").checked ? "full" : "basic", // 内容检测方式
     useAI: $("useAI").value,                            // 是否使用AI声明: no | yes
     draftMode: $("draftMode").checked,                  // 仅存草稿：点下一步建章后取消发布
+    sensitiveCheck: $("sensitiveCheck").checked,        // 敏感词预检开关（词库另存 WORDS_KEY）
     dryRun: $("dryRun").checked,                        // 试填模式：只填表不发布
   };
 }
@@ -308,8 +359,11 @@ function render() {
     const row = document.createElement("div");
     row.className = "item";
     const short = minWords > 0 && t.wordCount < minWords; // 正文偏短：多半解析出错/残章
+    const hits = scanSensitive(t); // 敏感词命中
+    const flag = hits.length ? `<span class="flag" title="命中敏感词：${escapeHtml(hits.join("、"))}">🚫</span>` : "";
     row.innerHTML = `
       <input type="checkbox" ${t.selected ? "checked" : ""} data-i="${i}" />
+      ${flag}
       <span class="title" title="${escapeHtml(t.title)}">第${t.chapterNumber || "?"}章 · ${escapeHtml(t.title)}</span>
       <span class="meta${short ? " short" : ""}" title="${short ? `正文仅 ${t.wordCount} 字，少于阈值 ${minWords}，请检查是否解析出错` : ""}">${short ? "⚠️ " : ""}${t.wordCount}字</span>
       <button class="edit" data-i="${i}" title="预览/编辑" style="border:none;background:none;cursor:pointer;font-size:14px;padding:0 4px;">✏️</button>`;
@@ -328,7 +382,10 @@ function updateCount() {
   const sel = tasks.filter((t) => t.selected).length;
   const minWords = +$("minWords").value || 0;
   const shortSel = minWords > 0 ? tasks.filter((t) => t.selected && t.wordCount < minWords).length : 0;
-  $("count").textContent = `已选 ${sel} / 共 ${tasks.length} 章` + (shortSel ? ` · ⚠️${shortSel}章偏短` : "");
+  const hitSel = tasks.filter((t) => t.selected && scanSensitive(t).length).length;
+  $("count").textContent = `已选 ${sel} / 共 ${tasks.length} 章`
+    + (shortSel ? ` · ⚠️${shortSel}章偏短` : "")
+    + (hitSel ? ` · 🚫${hitSel}章含敏感词` : "");
   renderPreview();
 }
 
