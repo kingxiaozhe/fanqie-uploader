@@ -12,8 +12,11 @@ catch { console.log("⏭️  跳过：未找到 playwright（npx playwright inst
 
 const root = path.join(__dirname, "..");
 
+// 可选：PW_EXECUTABLE 指定浏览器可执行文件（用预装 Chromium 时设它），否则用 playwright 自带
+const LAUNCH = process.env.PW_EXECUTABLE ? { executablePath: process.env.PW_EXECUTABLE } : {};
+
 (async () => {
-  const b = await chromium.launch();
+  const b = await chromium.launch(LAUNCH);
   const p = await b.newPage();
   // 关键：在任何页面脚本执行前注入 chrome 桩
   await p.addInitScript(() => {
@@ -103,6 +106,33 @@ const root = path.join(__dirname, "..");
     $("minWords").value = "0"; $("minWords").dispatchEvent(new Event("input"));
     ok("偏短预警: 阈值0关闭", ![...document.querySelectorAll("#list .meta")].some((m) => m.classList.contains("short")));
     ok("collectSettings 含 minWords", "minWords" in collectSettings());
+
+    // 仅存草稿模式：默认关 + 进 collectSettings + 开启隐藏排期预览
+    ok("草稿模式默认关", $("draftMode").checked === false);
+    ok("collectSettings 含 draftMode", "draftMode" in collectSettings());
+    document.querySelector("input[name=mode][value=auto]").checked = true;
+    tasks = [{ id: 1, chapterNumber: 1, title: "a", content: "x", wordCount: 1500, selected: true }];
+    render();
+    $("draftMode").checked = true; $("draftMode").dispatchEvent(new Event("change"));
+    ok("草稿模式隐藏排期预览", $("previewBox").hidden === true, $("previewBox").hidden);
+    $("draftMode").checked = false; $("draftMode").dispatchEvent(new Event("change"));
+
+    // 敏感词预检：词库+开关 → 命中标 🚫 + 统计 + tooltip；关闭后消失
+    ok("collectSettings 含 sensitiveCheck", "sensitiveCheck" in collectSettings());
+    tasks = [
+      { id: 1, chapterNumber: 1, title: "正常章", content: "风和日丽", wordCount: 1500, selected: true },
+      { id: 2, chapterNumber: 2, title: "问题章", content: "含违禁词A的正文", wordCount: 1400, selected: true },
+    ];
+    sensitiveWords = ["违禁词A"];
+    render();
+    ok("敏感词: 未开启不标记", document.querySelectorAll("#list .flag").length === 0);
+    $("sensitiveCheck").checked = true; $("sensitiveCheck").dispatchEvent(new Event("change"));
+    let flags = [...document.querySelectorAll("#list .flag")];
+    ok("敏感词: 命中章打🚫", flags.length === 1, flags.length);
+    ok("敏感词: tooltip列出命中词", flags[0] && flags[0].title.includes("违禁词A"), flags[0] && flags[0].title);
+    ok("敏感词: 统计提示含敏感词", $("count").textContent.includes("🚫1章含敏感词"), $("count").textContent);
+    $("sensitiveCheck").checked = false; $("sensitiveCheck").dispatchEvent(new Event("change"));
+    ok("敏感词: 关闭后标记消失", document.querySelectorAll("#list .flag").length === 0);
     return out;
   });
 
