@@ -63,11 +63,36 @@ $("startDateMode").addEventListener("change", (e) => {
   $("startDate").hidden = e.target.value !== "fixed";
 });
 
-// ---------- 设置持久化：记住上次的选择 ----------
-const SETTINGS_KEY = "popup_settings";
+// ---------- 设置持久化：记住上次的选择（支持按书独立配置）----------
+const SETTINGS_KEY = "popup_settings";          // 全局"上次使用"（无法定位到书时用）
+const BY_BOOK_KEY = "popup_settings_by_book";   // { [bookId]: settings } 每本书专属
+let currentBookId = null;                        // 当前番茄标签页对应的书 id（定位不到为 null）
+
+// 从当前活动的番茄作者标签页 URL 提取 bookId
+async function detectBookId() {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const m = (tab?.url || "").match(/\/main\/writer\/(?:chapter-manage\/)?(\d+)/);
+    return m ? m[1] : null;
+  } catch (_) { return null; }
+}
+
+// 设置作用域提示
+function syncBookLabel() {
+  const el = $("bookScope");
+  if (!el) return;
+  el.textContent = currentBookId ? `📕 本书专属 · #${currentBookId}` : "全局设置";
+  el.title = currentBookId
+    ? "已定位到当前番茄书，设置仅对本书生效"
+    : "未在番茄『章节管理』页打开书，使用全局设置";
+}
 
 async function restoreSettings() {
-  const { [SETTINGS_KEY]: s } = await chrome.storage.local.get(SETTINGS_KEY);
+  currentBookId = await detectBookId();
+  const { [SETTINGS_KEY]: global, [BY_BOOK_KEY]: byBook } = await chrome.storage.local.get([SETTINGS_KEY, BY_BOOK_KEY]);
+  // 优先本书专属；没有则用全局"上次使用"作为模板（首次配置一本书时不必从零开始）
+  const s = (currentBookId && byBook && byBook[currentBookId]) || global;
+  syncBookLabel();
   if (s) {
     if (s.publishMode) {
       const radio = document.querySelector(`input[name="mode"][value="${s.publishMode}"]`);
@@ -102,7 +127,15 @@ async function restoreSettings() {
 }
 
 function saveSettings() {
-  chrome.storage.local.set({ [SETTINGS_KEY]: collectSettings() });
+  const s = collectSettings();
+  chrome.storage.local.set({ [SETTINGS_KEY]: s }); // 全局"上次使用"（同步写）
+  // 定位到书时，额外存一份本书专属（读-改-写 map，用户操作节奏下无竞态）
+  if (currentBookId) {
+    chrome.storage.local.get(BY_BOOK_KEY).then(({ [BY_BOOK_KEY]: byBook = {} }) => {
+      byBook[currentBookId] = s;
+      chrome.storage.local.set({ [BY_BOOK_KEY]: byBook });
+    });
+  }
 }
 
 // 任一设置项变化即保存；并在加载时恢复
