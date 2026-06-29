@@ -4,6 +4,7 @@
 // ============================================================
 
 let tasks = []; // [{ id, fileName, title, chapterNumber, content, wordCount, selected }]
+let folderName = ""; // 选中的文件夹名（= 书名），随会话一路带到进度面板/导出报告
 
 const $ = (id) => document.getElementById(id);
 
@@ -158,8 +159,8 @@ async function onFolderPicked(e) {
     alert("该文件夹下没有 .txt / .md 文件");
     return;
   }
-  // 文件夹名（webkitRelativePath 形如 "我的小说/第1章.txt"）
-  const folderName = files[0].webkitRelativePath.split("/")[0] || "已选择";
+  // 文件夹名（webkitRelativePath 形如 "我的小说/第1章.txt"）= 书名
+  folderName = files[0].webkitRelativePath.split("/")[0] || "已选择";
   $("folderName").textContent = folderName;
 
   // 按文件名里的章节号排序，保证上传顺序正确
@@ -355,7 +356,7 @@ async function onStart() {
   const sessionId = "s_" + cryptoId();
   const resp = await chrome.runtime.sendMessage({
     type: "START_UPLOAD",
-    data: { tasks: selected, sessionId, settings: collectSettings() },
+    data: { tasks: selected, sessionId, settings: collectSettings(), folderName },
   });
   alert(resp?.message || "上传会话已启动");
   window.close();
@@ -363,7 +364,11 @@ async function onStart() {
 
 // ---------- 解析工具 ----------
 function numFromName(name) {
-  const m = name.match(/(?:第)?(\d+)(?:章)?/);
+  // 优先「第N章」：避免被文件名里的其它数字（年份/版本号如 "2024第5章"、"v2第3章"）带偏
+  const zh = name.match(/第\s*(\d+)\s*章/);
+  if (zh) return parseInt(zh[1], 10);
+  // 退而求其次：取第一个数字（兼容 "001.txt"、"5 标题.txt" 这类纯数字命名）
+  const m = name.match(/(\d+)/);
   return m ? parseInt(m[1], 10) : null;
 }
 function numFromText(text) {

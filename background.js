@@ -99,7 +99,7 @@ async function appendLog(src, text) {
 
 // ---- 开始上传：把会话存进 storage，打开番茄作者后台 ----
 async function handleStartUpload(data, sendResponse) {
-  const { tasks, sessionId, settings } = data;
+  const { tasks, sessionId, settings, folderName } = data;
   await chrome.storage.local.remove("upload_control"); // 清除上次的"停止"标记
   await appendLog("system", `▶▶ 新批次开始：${tasks?.length || 0} 章 | 设置 ${JSON.stringify(settings || {})}`);
   await chrome.storage.local.set({ upload_autostart: true }); // 标记"刚点开始"，让调度器自动跑而非询问续传
@@ -107,6 +107,7 @@ async function handleStartUpload(data, sendResponse) {
     upload_session: {
       sessionId,
       tasks,
+      folderName: folderName || "",  // 书名：进度面板标题 + CSV 报告文件名用
       settings: settings || { publishMode: "immediate", autoRetry: true, maxRetries: 3 },
       currentIndex: 0,
       retries: {},        // { [taskId]: 已重试次数 }
