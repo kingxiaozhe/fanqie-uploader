@@ -57,6 +57,7 @@
     position:absolute; left:2.5px; top:-1px; }
   .item .title { flex:1; font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .item .meta { font-size:11px; color:var(--faint); flex:none; }
+  .item .meta.short { color:#e62f1f; font-weight:700; }  /* 字数偏短预警 */
   .item .edit { border:none; background:none; color:var(--faint); cursor:pointer; font-size:13px; padding:0 2px; }
   .item .edit:hover { color:var(--accent); }
   .empty { padding:24px; text-align:center; color:var(--faint); font-size:13px; }
@@ -214,6 +215,9 @@
     </div>
     <div class="frow"><span>本次最多发布<div class="hint">到量自动停，降低风控</div></span>
       <span class="rng"><input type="number" id="maxPerBatch" class="num" value="0" min="0" max="999" /> 章</span>
+    </div>
+    <div class="frow"><span>字数偏短提醒<div class="hint">正文少于此值的章节标红（0=关）</div></span>
+      <span class="rng"><input type="number" id="minWords" class="num" value="100" min="0" max="99999" /> 字</span>
     </div>
     <div class="frow"><span>🌙 夜间避让<div class="hint">该时段不排期，顺延到白天</div></span><input type="checkbox" id="nightAvoid" class="tg" /></div>
     <div class="frow" id="nightRow" hidden><span>夜间时段</span>

@@ -88,6 +88,21 @@ const root = path.join(__dirname, "..");
     ok("移除已发布: 仅剩第3章", tasks.length === 1 && tasks[0].chapterNumber === 3, tasks.map((t) => t.chapterNumber).join(","));
     ok("sameTitleLoose 容空格", sameTitleLoose("第2章 乙", "第 2 章 乙"));
     ok("sameTitleLoose 不同标题不误删", !sameTitleLoose("第1章 甲", "第9章 戊"));
+
+    // 字数偏短预警：阈值内标红 + 统计提示 + 阈值=0 关闭
+    $("minWords").value = "100"; $("minWords").dispatchEvent(new Event("input"));
+    tasks = [
+      { id: 1, chapterNumber: 1, title: "正常章", content: "x", wordCount: 1500, selected: true },
+      { id: 2, chapterNumber: 2, title: "残章", content: "x", wordCount: 30, selected: true },
+    ];
+    render();
+    let metas = [...document.querySelectorAll("#list .meta")];
+    ok("偏短预警: 残章标红", metas[1].classList.contains("short"));
+    ok("偏短预警: 正常章不标红", !metas[0].classList.contains("short"));
+    ok("偏短预警: 统计提示偏短数", $("count").textContent.includes("1章偏短"), $("count").textContent);
+    $("minWords").value = "0"; $("minWords").dispatchEvent(new Event("input"));
+    ok("偏短预警: 阈值0关闭", ![...document.querySelectorAll("#list .meta")].some((m) => m.classList.contains("short")));
+    ok("collectSettings 含 minWords", "minWords" in collectSettings());
     return out;
   });
 

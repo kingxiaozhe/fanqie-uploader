@@ -74,6 +74,7 @@ async function restoreSettings() {
     if (s.gapMax != null) $("gapMax").value = s.gapMax;
     if (s.minuteJitter != null) $("minuteJitter").value = s.minuteJitter;
     if (s.maxPerBatch != null) $("maxPerBatch").value = s.maxPerBatch;
+    if (s.minWords != null) $("minWords").value = s.minWords;
     if (typeof s.nightAvoid === "boolean") $("nightAvoid").checked = s.nightAvoid;
     if (s.nightStart) $("nightStart").value = s.nightStart;
     if (s.nightEnd) $("nightEnd").value = s.nightEnd;
@@ -96,6 +97,8 @@ function saveSettings() {
 document.querySelectorAll("#settings input, #settings select").forEach((el) =>
   el.addEventListener("change", saveSettings)
 );
+// 字数阈值改动时即时刷新列表标红（input 事件覆盖键入与微调）
+$("minWords").addEventListener("input", () => { if (tasks.length) render(); });
 restoreSettings();
 
 // #2.2 安全档位：一键套用一组反风控参数（间隔/偏移/上限/拟人/夜间避让）
@@ -144,6 +147,7 @@ function collectSettings() {
     gapMax: Math.max(1, +$("gapMax").value || 20),     // 章节间隔随机上限（秒）
     minuteJitter: Math.max(0, +$("minuteJitter").value || 0), // 发布时间随机偏移±分钟
     maxPerBatch: Math.max(0, +$("maxPerBatch").value || 0),   // 本次发布量上限（0=不限）
+    minWords: Math.max(0, +$("minWords").value || 0),         // 字数偏短提醒阈值（0=关，仅前端提醒）
     nightAvoid: $("nightAvoid").checked,                // #2.3 夜间避让：跳过夜间档位
     nightStart: $("nightStart").value || "23:00",       // 夜间时段起
     nightEnd: $("nightEnd").value || "07:00",           // 夜间时段止
@@ -252,14 +256,16 @@ function render() {
     $("start").disabled = true;
     return;
   }
+  const minWords = +$("minWords").value || 0;
   list.innerHTML = "";
   tasks.forEach((t, i) => {
     const row = document.createElement("div");
     row.className = "item";
+    const short = minWords > 0 && t.wordCount < minWords; // 正文偏短：多半解析出错/残章
     row.innerHTML = `
       <input type="checkbox" ${t.selected ? "checked" : ""} data-i="${i}" />
       <span class="title" title="${escapeHtml(t.title)}">第${t.chapterNumber || "?"}章 · ${escapeHtml(t.title)}</span>
-      <span class="meta">${t.wordCount}字</span>
+      <span class="meta${short ? " short" : ""}" title="${short ? `正文仅 ${t.wordCount} 字，少于阈值 ${minWords}，请检查是否解析出错` : ""}">${short ? "⚠️ " : ""}${t.wordCount}字</span>
       <button class="edit" data-i="${i}" title="预览/编辑" style="border:none;background:none;cursor:pointer;font-size:14px;padding:0 4px;">✏️</button>`;
     row.querySelector('input[type="checkbox"]').addEventListener("change", (e) => {
       tasks[+e.target.dataset.i].selected = e.target.checked;
@@ -274,7 +280,9 @@ function render() {
 
 function updateCount() {
   const sel = tasks.filter((t) => t.selected).length;
-  $("count").textContent = `已选 ${sel} / 共 ${tasks.length} 章`;
+  const minWords = +$("minWords").value || 0;
+  const shortSel = minWords > 0 ? tasks.filter((t) => t.selected && t.wordCount < minWords).length : 0;
+  $("count").textContent = `已选 ${sel} / 共 ${tasks.length} 章` + (shortSel ? ` · ⚠️${shortSel}章偏短` : "");
   renderPreview();
 }
 
