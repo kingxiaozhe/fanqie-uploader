@@ -120,6 +120,29 @@
   let sawRateLimit = false; // 本章是否出现过限流(-1010)——用于自适应降速 + 失败归类
   const SUBMIT_CONFIRM_TIMEOUT_MS = 60000; // 提交确认墙钟超时（真实时间，不受后台节流影响）
   const PUBLISH_RESULT_TIMEOUT_MS = 32000; // 发布结果判定墙钟超时（原 40 tick×800ms 的等价预算）
+
+  // ============================================================
+  //  时延集中配置（毫秒）—— 调节奏只改这里。delay() 会另行叠加拟人抖动与节奏倍率
+  // ============================================================
+  const TIMINGS = {
+    taskRetry: 500,           // REQUEST_TASK 任务未就绪时的重试间隔
+    contentSettle: 1500,      // 填正文后等番茄注册并自动保存（过短会让"下一步"无效）
+    refillGap: 800,           // 正文未注册时补填前的间隔
+    titleRefill: 500,         // 标题补填后的间隔
+    closeTabDelay: 1500,      // 失败上报后延迟关页（让消息先送达）
+    focusSettle: 300,         // 编辑区聚焦生效
+    draftRetryClick: 700,     // 草稿弹窗清掉后重点下一步
+    conflictRetryClick: 1200, // 版本冲突清掉后重点下一步（拉长间隔避免猛点）
+    uiSettle: 400,            // 通用小间隔：浮层/开关/弹窗动作后的动画沉降
+    draftClose: 700,          // 存草稿关闭弹窗后的等待
+    dialogSettle: 800,        // 发布设置弹窗渲染 / 定时开关动画
+    clickSettle: 200,         // 单选/时间格点选后的确认间隔
+    calFlip: 300,             // 日历翻月动画
+    calPick: 400,             // 点中日期后的面板反应
+    scrollSettle: 100,        // 时间格滚动到位
+    timeConfirm: 300,         // 时间面板「确定」后
+    confirmSettle: 1200,      // 点「确认发布」后等待提交发出
+  };
   // 暂时性限流（-1010 操作太频繁 / 稍后再试）：番茄前端会自动重发到成功，
   // 不能当成终局失败——否则轮询恰好先抓到这一条就会把已成功的章节误判为失败。
   const isTransientFail = (r) =>
@@ -273,7 +296,7 @@
         setStatus("📥 已拉取章节：" + resp.task.title);
         fillChapter({ task: resp.task, sessionId: resp.sessionId });
       } else if (attempt < 6) {
-        setTimeout(() => requestTaskWithRetry(attempt + 1), 500); // 任务可能还没存好，重试
+        setTimeout(() => requestTaskWithRetry(attempt + 1), TIMINGS.taskRetry); // 任务可能还没存好，重试
       } else {
         // 正常情况：本页不是自动上传打开的（如草稿创建后重载的二次注入、或人工手动编辑页）
         dlog("本页无待发任务，发布器待命（非自动上传页面，正常）");
@@ -309,7 +332,7 @@
       await fillTitle(task);
       setStatus("📄 填写正文…");
       await fillContent(task);
-      await delay(1500); // 等番茄注册正文并自动保存，避免"下一步"因内容未就绪而无效
+      await delay(TIMINGS.contentSettle); // 等番茄注册正文并自动保存，避免"下一步"因内容未就绪而无效
 
       // 点下一步前校验正文真的填进去了（番茄富文本偶发不注册，或被草稿弹窗打断）。
       // 先补填一次；仍为空则在"创建章节之前"失败——既不会发空章，也安全可重试。
@@ -317,9 +340,9 @@
         setStatus("📄 正文未注册，补填一次…");
         dismissDraftPrompt();
         dismissVersionConflict();
-        await delay(800);
+        await delay(TIMINGS.refillGap);
         await fillContent(task);
-        await delay(1500);
+        await delay(TIMINGS.contentSettle);
         if ((findContentArea()?.textContent || "").trim().length < 5) {
           throw new Error("正文未成功填入，已中止（可安全重试）");
         }
@@ -330,7 +353,7 @@
       if (titleEl && !(titleEl.value || "").trim()) {
         setStatus("✏️ 标题为空，补填章节号/标题…");
         await fillTitle(task);
-        await delay(500);
+        await delay(TIMINGS.titleRefill);
       }
 
       // 🧪 试填模式：填完就停，不提交、不关页，让用户检查
@@ -361,7 +384,7 @@
       if (!DEBUG) {
         // 带上 submitted（防重复）+ reason/detail（失败归类）+ rateLimited（自适应降速）
         chrome.runtime.sendMessage({ type: "TASK_FAILED", taskId: task.id, sessionId, submitted, reason, detail, rateLimited: sawRateLimit }).catch(() => {});
-        setTimeout(() => chrome.runtime.sendMessage({ type: "CLOSE_TAB" }).catch(() => {}), 1500);
+        setTimeout(() => chrome.runtime.sendMessage({ type: "CLOSE_TAB" }).catch(() => {}), TIMINGS.closeTabDelay);
       }
       // DEBUG=true：不关页、不上报失败，停在原地让你看横幅卡在哪一步
     } finally {
@@ -439,7 +462,7 @@
     const area = findContentArea();
     if (!area) throw new Error("未找到正文编辑区");
     area.focus();
-    await delay(300);
+    await delay(TIMINGS.focusSettle);
 
     if (area.classList.contains("ProseMirror") || area.getAttribute("contenteditable") === "true") {
       // 富文本：按段落塞 <p>
@@ -504,7 +527,7 @@
 
         // 草稿提示拦截了"下一步"——清掉后重新点一次继续
         if (dismissDraftPrompt()) {
-          setTimeout(clickSubmit, 700);
+          setTimeout(clickSubmit, TIMINGS.draftRetryClick);
           return;
         }
         // 版本冲突：选「继续编辑本地」后重点下一步。但若反复出现（清不掉），
@@ -515,7 +538,7 @@
             reject(new Error("版本冲突反复出现，已中止本章（将自动重试）"));
             return;
           }
-          setTimeout(clickSubmit, 1200); // 拉长间隔，避免每秒猛点
+          setTimeout(clickSubmit, TIMINGS.conflictRetryClick); // 拉长间隔，避免每秒猛点
           return;
         }
 
@@ -681,7 +704,7 @@
   // 章节记录。所以存草稿 = 走到发布弹窗（章节已建）后取消发布，不点「确认发布」。
   async function saveAsDraft() {
     setStatus("📝 仅存草稿：取消发布，章节将作为草稿保留在章节管理页", "success");
-    await delay(400);
+    await delay(TIMINGS.uiSettle);
     closePickerDropdowns(); // 先关掉可能打开的日期/时间浮层，避免误触
     const dlg = document.querySelector(SEL.publishDialog);
     // 关闭弹窗：优先点关闭图标 / 取消按钮，兜底按 Esc
@@ -694,21 +717,21 @@
       (document.body || document).dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", keyCode: 27, bubbles: true }));
       dlog("存草稿：未找到关闭按钮，已按 Esc");
     }
-    await delay(700);
+    await delay(TIMINGS.draftClose);
     // 番茄可能弹「确认放弃发布?」二次确认——若出现，点主按钮确认放弃（草稿仍在）
     for (const m of document.querySelectorAll(SEL.modalAll)) {
       if (m.classList.contains("publish-confirm-container-new")) continue;
       const r = m.getBoundingClientRect();
       if (r.width < 2 || r.height < 2) continue;
       const p = m.querySelector("button.arco-btn-primary");
-      if (p) { realClick(p); dlog("存草稿：确认放弃发布二次弹窗"); await delay(400); break; }
+      if (p) { realClick(p); dlog("存草稿：确认放弃发布二次弹窗"); await delay(TIMINGS.uiSettle); break; }
     }
   }
 
   // ---------- 发布设置对话框：设定时/立即 + 点确认发布 ----------
   async function handlePublishDialog() {
     setStatus("⚙️ 发布设置弹窗：处理 AI / 定时…");
-    await delay(800);
+    await delay(TIMINGS.dialogSettle);
     await setAIChoice();                       // 先处理「是否使用AI」
     const pt = currentTask?.publishTime;
     if (pt && pt !== "now") await setScheduledInDialog(pt);
@@ -725,8 +748,8 @@
       if ((r.textContent || "").trim() !== want) continue;
       const input = r.querySelector('input[type="radio"]');
       realClick(input || r);   // 直接点 input（label 转发对合成事件不可靠）
-      await delay(200);
-      if (!r.classList.contains("arco-radio-checked")) { realClick(r); await delay(200); }
+      await delay(TIMINGS.clickSettle);
+      if (!r.classList.contains("arco-radio-checked")) { realClick(r); await delay(TIMINGS.clickSettle); }
       const ok = r.classList.contains("arco-radio-checked");
       setStatus("🤖 是否使用AI：已选「" + want + "」" + (ok ? "" : "（未确认选中）"));
       return;
@@ -742,7 +765,7 @@
 
     // 打开"定时发布"开关（当前关闭时）
     const off = document.querySelector(SEL.scheduleSwitchOff);
-    if (off) { realClick(off); await delay(800); }
+    if (off) { realClick(off); await delay(TIMINGS.dialogSettle); }
 
     // 找日期/时间输入框（按当前值的格式区分）
     const pickers = document.querySelectorAll(SEL.pickerInput);
@@ -799,7 +822,7 @@
       const icon = ym < targetYM ? icons[2] : icons[1];        // 下月 / 上月
       if (!icon) break;
       realClick(icon);
-      await delay(300);
+      await delay(TIMINGS.calFlip);
     }
 
     // 点目标日（本月内、未禁用的格子）
@@ -807,7 +830,7 @@
       const v = cell.querySelector(SEL.calCellValue);
       if (v && v.textContent.trim() === String(target.getDate())) {
         realClick(cell);
-        await delay(400);
+        await delay(TIMINGS.calPick);
         return true;
       }
     }
@@ -828,9 +851,9 @@
         const inner = cell.querySelector(SEL.timeCellInner) || cell;
         if ((inner.textContent || "").trim() === want[c]) {
           cell.scrollIntoView({ block: "center" });
-          await delay(100);
+          await delay(TIMINGS.scrollSettle);
           realClick(cell); // 点 li 容器（与日历一致，已验证可用）
-          await delay(200);
+          await delay(TIMINGS.clickSettle);
           done++;
           break;
         }
@@ -839,7 +862,7 @@
     // 点面板底部「确定」应用并关闭（关键：不点确定时间不生效、浮层也不关）
     const confirm = [...document.querySelectorAll(SEL.timePanel + " button")]
       .find((b) => (b.textContent || "").trim() === "确定");
-    if (confirm) { realClick(confirm); await delay(300); }
+    if (confirm) { realClick(confirm); await delay(TIMINGS.timeConfirm); }
     return done >= 2;
   }
 
@@ -853,7 +876,7 @@
   async function setImmediateInDialog() {
     // 若定时开关是开启状态，关掉它 = 立即发布
     const on = document.querySelector(SEL.scheduleSwitchOn);
-    if (on) { realClick(on); await delay(400); }
+    if (on) { realClick(on); await delay(TIMINGS.uiSettle); }
   }
 
   // 关掉可能打开的日期/时间下拉浮层：在弹窗标题处触发 mousedown，触发 Arco"点击外部关闭"
@@ -868,9 +891,9 @@
   }
 
   async function clickConfirmPublish() {
-    await delay(400);
+    await delay(TIMINGS.uiSettle);
     closePickerDropdowns(); // 先关下拉浮层，确保"确认发布"是真正提交而非只关浮层
-    await delay(400);
+    await delay(TIMINGS.uiSettle);
     // ⚠️ 只在弹窗【底部 footer】找主按钮！弹窗里还藏着时间选择器的"确定"按钮，
     //    若全局搜会误点那个隐藏的"确定"（它在 DOM 里排在前面），导致发布点不动。
     const dialog = document.querySelector(SEL.publishDialog) || document;
@@ -885,7 +908,7 @@
     //    万一这一次没生效，waitForPublishResult 里的"弹窗未关就重点"自愈会兜底重发。
     realClick(btn);
     setStatus("✅ 已点击确认发布，等待跳转…");
-    await delay(1200);
+    await delay(TIMINGS.confirmSettle);
   }
 
   function pad(n) { return String(n).padStart(2, "0"); }

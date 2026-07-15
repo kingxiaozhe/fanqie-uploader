@@ -23,6 +23,16 @@
     tableRow: "tbody .arco-table-tr",  // 章节列表行（DOM 回退抓取 + 最晚排期扫描）
     rowTitle: ".table-title",          // 行内标题单元格
   };
+
+  // 时延集中配置（毫秒）—— delay() 会另行乘节奏倍率 pace
+  const TIMINGS = {
+    spaRoute: 800,      // SPA 路由变化后重新判定页面
+    tableRender: 1500,  // 进章节管理页等表格渲染
+    syncBanner: 1200,   // 同步完成提示的停留
+    nextChapter: 1000,  // 本章结束到调度下一章的基准间隔（×pace）
+    retryGap: 1500,     // 失败重试前的基准间隔（×pace）
+    dedupRefresh: 800,  // 防重复查重前等接口/页面刷新出新章
+  };
   let rateBackoff = 1;       // #1.2 自适应限流降速倍率：触发 -1010 时放大章间间隔，平稳后回落（1~4）
 
   init();
@@ -54,7 +64,7 @@
     new MutationObserver(() => {
       if (location.href !== lastUrl) {
         lastUrl = location.href;
-        setTimeout(detectAndAct, 800);
+        setTimeout(detectAndAct, TIMINGS.spaRoute);
       }
     }).observe(document, { subtree: true, childList: true });
 
@@ -109,12 +119,12 @@
     busy = true;
 
     // ① 先同步：把页面上已存在的章节标记为已上传，避免重复发
-    await delay(1500); // 等表格渲染
+    await delay(TIMINGS.tableRender); // 等表格渲染
     const synced = await syncUploadedChapters();
     if (synced > 0) {
       setIndicator(`🔄 已同步 ${synced} 章为"已上传"，将跳过`, "info");
       await saveSession();
-      await delay(1200);
+      await delay(TIMINGS.syncBanner);
     }
 
     // ② 定时模式：确定起始日期（自动接续已排期 / 指定 / 明天）
@@ -350,7 +360,7 @@
     console.log("✅ 本章完成:", taskId);
     session.currentIndex += 1;
     await saveSession();
-    setTimeout(processNext, 1000 * pace());
+    setTimeout(processNext, TIMINGS.nextChapter * pace());
   }
 
   async function onTaskFailed(taskId, submitted, reason, detail, rateLimited) {
@@ -382,7 +392,7 @@
       setIndicator(`⏭️ 第 ${session.currentIndex + 1} 章已创建/已存在，跳过（防重复）`, "warning");
       session.currentIndex += 1;
       await saveSession();
-      setTimeout(processNext, 1000 * pace());
+      setTimeout(processNext, TIMINGS.nextChapter * pace());
       return;
     }
 
@@ -390,7 +400,7 @@
       session.retries[taskId] = used + 1;
       await saveSession();
       setIndicator(`🔁 第 ${session.currentIndex + 1} 章失败，重试 ${used + 1}/${s.maxRetries || 3}`, "warning");
-      setTimeout(processNext, 1500 * pace()); // 不前进 index，重发当前章
+      setTimeout(processNext, TIMINGS.retryGap * pace()); // 不前进 index，重发当前章
       return;
     }
 
@@ -401,7 +411,7 @@
     chrome.runtime.sendMessage({ type: "NOTIFY", message: `章节发布失败：${t?.title || taskId}（${reason || "原因未知"}，可稍后重发）` }).catch(() => {});
     session.currentIndex += 1;
     await saveSession();
-    setTimeout(processNext, 1000 * pace());
+    setTimeout(processNext, TIMINGS.nextChapter * pace());
   }
 
   // 发布被拒是否为"每日上限"（接口 code=-1020，msg 如"更新作品数超出每日上限"）
@@ -680,7 +690,7 @@
 
   // 防重复：检查这一章是否已存在（按章节号或标题匹配，全量·跨分页）
   async function isChapterAlreadyPublished(task) {
-    await delay(800); // 给页面/接口一点时间刷新出新章
+    await delay(TIMINGS.dedupRefresh); // 给页面/接口一点时间刷新出新章
     const published = await getPublishedChapters();
     return published.some((p) =>
       (task.chapterNumber && p.chapterNumber === task.chapterNumber) ||
