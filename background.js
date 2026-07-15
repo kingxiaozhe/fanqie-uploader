@@ -44,6 +44,18 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           sendResponse({ success: true });
           break;
 
+        // 3b) 调度器看门狗超时：关掉当前发布标签页——被 Chrome 节流的隐藏发布页
+        //     脚本可能仍在残留点击（僵尸页），不能指望它自己收口
+        case "CLOSE_PUBLISH_TAB": {
+          const { last_publish_tab_id } = await chrome.storage.local.get("last_publish_tab_id");
+          if (last_publish_tab_id) {
+            try { await chrome.tabs.remove(last_publish_tab_id); } catch (_) {}
+            await chrome.storage.local.remove("last_publish_tab_id");
+          }
+          sendResponse({ success: true });
+          break;
+        }
+
         // 4) 发布器通知"本章完成/失败"——转发给调度器标签页驱动下一章；
         //    完成后由后台直接关闭发布 tab（不依赖发布页脚本是否还活着，更可靠）
         case "TASK_DONE":
@@ -136,6 +148,7 @@ async function handleOpenPublishTab(data, sendResponse) {
   // 按 tabId 把任务存好，等发布页加载完成后主动来拉取（见 REQUEST_TASK）
   if (tab.id) {
     await chrome.storage.local.set({ ["publish_task_" + tab.id]: { task, sessionId } });
+    await chrome.storage.local.set({ last_publish_tab_id: tab.id }); // 看门狗关僵尸页用
   }
   sendResponse({ success: true, tabId: tab.id });
 }

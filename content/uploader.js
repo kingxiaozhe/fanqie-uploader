@@ -64,6 +64,9 @@
   let resumePrompted = false;
   async function detectAndAct() {
     if (!session || session.status === "completed") return;
+    // 发布页归 publisher 管：uploader 在这里保持静默，不刷"请进入章节管理页"提示
+    //（发布页也匹配 writer/* 注入了本脚本，SPA 变更会反复触发本函数 → 日志噪音）
+    if (/\/publish(\/|\?|$)/.test(location.href)) return;
     if (!/\/main\/writer\/chapter-manage\/\d+/.test(location.href)) {
       setIndicator("📚 请进入你要上传的小说『章节管理』页面", "info");
       return;
@@ -139,10 +142,13 @@
     await processNext();
   }
 
+  function toYMD(d) {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }
+
   // 起始日期：auto=已排期最晚日期的次日；fixed=指定；tomorrow=明天。返回 YYYY-MM-DD
   function computeScheduleStartDate() {
     const s = session.settings || {};
-    const toYMD = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
     if (s.startDateMode === "fixed" && s.startDate) return s.startDate;
 
@@ -152,11 +158,28 @@
       return toYMD(d);
     }
 
-    // auto：读章节管理页里已排期的最晚日期，从次日开始；读不到则用明天
-    const latest = findLatestScheduledDate();
-    const d = latest || new Date();
+    // auto：优先用章节列表接口的【全量·跨分页】排期时间（同步时已缓存）——
+    // DOM 表格只有当前分页，最晚排期落在其他分页会读漏，接续起始日偏早、
+    // 撞上已排满的日期（-1020 每日上限）。接口没给时间字段时才回退 DOM 扫描。
+    const apiLatest = latestScheduledFromList(lastPublishedList);
+    const latest = apiLatest || findLatestScheduledDate();
+    try {
+      chrome.runtime.sendMessage({ type: "LOG", src: "uploader",
+        text: `📅 排期接续：最晚已排期=${latest ? toYMD(latest) : "未读到"}（来源:${apiLatest ? "接口全量" : "DOM当前页,可能漏读其他分页"}）` });
+    } catch (_) {}
+    const d = latest ? new Date(latest) : new Date();
     d.setDate(d.getDate() + 1);
     return toYMD(d);
+  }
+
+  // 从接口全量列表里取最晚发布/排期时间；条目都没有时间字段时返回 null（让上层回退 DOM）
+  function latestScheduledFromList(list) {
+    let latest = null;
+    for (const p of list || []) {
+      const ms = p && typeof p.publishMs === "number" ? p.publishMs : null;
+      if (ms && (!latest || ms > latest)) latest = ms;
+    }
+    return latest ? new Date(latest) : null;
   }
 
   // 扫描章节管理页表格，找出"发布时间"列里最晚的日期
@@ -258,6 +281,11 @@
       if (taskId !== awaitingTaskId) return;
       console.warn("⏰ 本章超时无响应，按失败处理:", taskId);
       setIndicator("⏰ 本章超时，自动处理", "warning");
+      // 让后台关掉卡住的发布页：被 Chrome 节流的隐藏标签页脚本可能还在残留点击（僵尸页）。
+      // 试填模式除外——那个页面是留给用户人工检查的
+      if (!session?.settings?.dryRun) {
+        try { chrome.runtime.sendMessage({ type: "CLOSE_PUBLISH_TAB" }); } catch (_) {}
+      }
       onTaskFailed(taskId, false, "超时未确认", "看门狗：单章 5 分钟无响应", false);
     }, CHAPTER_TIMEOUT);
   }
@@ -328,6 +356,13 @@
     const used = session.retries[taskId] || 0;
     const task = session.tasks.find((x) => x.id === taskId);
 
+    // -1020 每日上限：该排期日已满——后续待发章整体顺延一天重算，不再逐章硬试同一天
+    //（硬试必被拒：每章白烧一次内容检测额度，还多留一个未排期的孤儿草稿）
+    if (s.publishMode === "auto" && isDailyLimitRejection(reason, detail) && rescheduleAfterDailyLimit(taskId)) {
+      setIndicator(`📅 该日排期已满（每日上限），后续章节顺延到 ${session.scheduleStartDate} 起重排`, "warning");
+      await saveSession();
+    }
+
     // 防重复关键：若发布器已点过"下一步"(submitted)，章节草稿很可能已创建——
     // 此时绝不重试（重试会再建一个=重复）。能在列表里查到的标记"已发"，查不到的标记"失败"。
     const exists = task && (await isChapterAlreadyPublished(task));
@@ -361,6 +396,37 @@
     session.currentIndex += 1;
     await saveSession();
     setTimeout(processNext, 1000 * pace());
+  }
+
+  // 发布被拒是否为"每日上限"（接口 code=-1020，msg 如"更新作品数超出每日上限"）
+  function isDailyLimitRejection(reason, detail) {
+    return reason === "发布被拒" && /每日上限|超出每日|code=-1020\b/.test(detail || "");
+  }
+
+  // 失败章的排期日期 +1 天作为新起始日；时间无效回退"明天"
+  function bumpStartDate(publishTime) {
+    const ms = Date.parse(publishTime);
+    const d = isNaN(ms) ? new Date() : new Date(ms);
+    d.setDate(d.getDate() + 1);
+    return toYMD(d);
+  }
+
+  // 每日上限命中后：起始日改为失败章日期+1，后续待发章按新起始日整体重算。
+  // 返回是否真的顺延了（同一天连续多章 -1020 只顺延一次，不叠加）
+  function rescheduleAfterDailyLimit(failedTaskId) {
+    const failed = session.tasks.find((x) => x.id === failedTaskId);
+    if (!failed || !failed.publishTime || failed.publishTime === "now") return false;
+    const newStart = bumpStartDate(failed.publishTime);
+    if (session.scheduleStartDate && newStart <= session.scheduleStartDate) return false; // 已顺延过
+    session.scheduleStartDate = newStart;
+    let ord = 0;
+    for (const t of session.tasks) {
+      if (t.id === failedTaskId || t.status === "uploaded" || t.status === "failed") continue;
+      t.publishTime = computePublishTime(ord);
+      ord++;
+    }
+    console.log("📅 每日上限：排期起始日顺延至", newStart);
+    return true;
   }
 
   // #2.3 夜间避让：判断某时刻是否落在"不发布"时段（默认 23:00~07:00，跨午夜）
@@ -524,9 +590,31 @@
         : "↩️ 章节列表接口不可用，回退 DOM 抓取（仅当前页，多分页可能漏判）";
       try { chrome.runtime.sendMessage({ type: "LOG", src: "uploader", text }); } catch (_) {}
     }
-    return useApi ? api : scrapePublishedChapters();
+    const result = useApi ? api : scrapePublishedChapters();
+    lastPublishedList = result; // 缓存给排期接续用（computeScheduleStartDate 是同步函数）
+    return result;
   }
   let lastPubSource = null;
+  let lastPublishedList = null;
+
+  // 从章节列表接口条目提取发布/排期时间，返回毫秒。字段名多版本探测；
+  // 兼容 秒/毫秒时间戳 与 "YYYY-MM-DD HH:mm:ss" 字符串；都拿不到返回 null（上层回退 DOM）
+  function pickScheduleMs(it) {
+    if (!it) return null;
+    for (const k of ["publish_time", "publish_timestamp", "online_time", "pub_time", "first_publish_time"]) {
+      const v = it[k];
+      if (v == null || v === "" || v === 0 || v === "0") continue;
+      if (typeof v === "number" || /^\d+$/.test(String(v))) {
+        const n = Number(v);
+        if (n > 1e12) return n;        // 毫秒级
+        if (n > 1e9) return n * 1000;  // 秒级
+        continue;                       // 数值太小，不是时间戳
+      }
+      const ms = Date.parse(String(v).replace(/-/g, "/")); // 斜杠格式确保按本地时区解析
+      if (!isNaN(ms)) return ms;
+    }
+    return null;
+  }
 
   // 直接同源调用 chapter_list 接口，翻完所有页返回 [{title, chapterNumber}]。
   // 任何异常/非 0 返回都返回 null，让上层回退 DOM。不带 msToken/a_bogus（读接口同源 + 会话 cookie 通常即可）。
@@ -551,7 +639,7 @@
           const title = (it.title || "").trim();
           if (!title) continue;
           const cm = title.match(/第\s*(\d+)\s*章/);
-          out.push({ title, chapterNumber: cm ? parseInt(cm[1], 10) : null });
+          out.push({ title, chapterNumber: cm ? parseInt(cm[1], 10) : null, publishMs: pickScheduleMs(it) });
         }
         const total = j.data.total_count || 0;
         if (!items.length || out.length >= total) break; // 翻完

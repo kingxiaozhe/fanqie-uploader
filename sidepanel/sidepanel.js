@@ -60,7 +60,7 @@ $("exportLog").addEventListener("click", async () => {
   const { fq_logs = [] } = await chrome.storage.local.get("fq_logs");
   if (!fq_logs.length) { alert("暂无日志"); return; }
   const pad = (n) => String(n).padStart(2, "0");
-  const fmt = (t) => { const d = new Date(t); return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`; };
+  const fmt = (t) => { const d = new Date(t); return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`; }; // 带日期：跨天日志不再"时间倒流"
   const lines = fq_logs.map((e) => `${fmt(e.t)} [${e.src}] ${e.text}`).join("\n");
   const ua = navigator.userAgent;
   const header = `番茄发布助手 运行日志\n导出时间: ${new Date().toLocaleString()}\nUA: ${ua}\n共 ${fq_logs.length} 条\n${"=".repeat(40)}\n`;

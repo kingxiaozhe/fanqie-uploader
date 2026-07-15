@@ -112,6 +112,7 @@
   // 接收 net-hook 截获的"发布接口"权威结果（成功与否以番茄接口返回为准）
   let netPublishResult = null;
   let sawRateLimit = false; // 本章是否出现过限流(-1010)——用于自适应降速 + 失败归类
+  const SUBMIT_CONFIRM_TIMEOUT_MS = 60000; // 提交确认墙钟超时（真实时间，不受后台节流影响）
   // 暂时性限流（-1010 操作太频繁 / 稍后再试）：番茄前端会自动重发到成功，
   // 不能当成终局失败——否则轮询恰好先抓到这一条就会把已成功的章节误判为失败。
   const isTransientFail = (r) =>
@@ -458,8 +459,17 @@
       let n = 0;
       let detectTicks = 0;
       let conflictCount = 0; // 版本冲突被处理的次数——反复出现说明清不掉，快速失败去重试
+      // 超时用【墙钟】而非 tick 计数：Chrome 对隐藏超 5 分钟的标签页会把定时器节流到
+      // 每分钟 1 次，计数型超时(60 tick)会被拉长到 ~1 小时——实测形成"僵尸发布页"，
+      // 每 4 分钟残留重点一次"下一步"。墙钟保证真实 60s 到点即收口关页。
+      const startMs = Date.now();
+      let frozenMs = 0;         // 风险检测中的时段不计入超时（要多久等多久）
+      let lastTickMs = Date.now();
       const timer = setInterval(async () => {
         n++;
+        const nowMs = Date.now();
+        const sinceLastTick = nowMs - lastTickMs;
+        lastTickMs = nowMs;
         // #2.1 风控优先：提交后若弹出验证码/账号异常，立即停整批，不再点任何按钮
         const risk = detectRiskControl();
         if (risk) { clearInterval(timer); signalRiskPause(risk); resolve(false); return; }
@@ -473,7 +483,7 @@
         // 番茄"正在为你检测风险内容"阶段可能较久——耐心等（要多久等多久）：
         // 冻结超时计数、不重点下一步，等检测结束弹出"发布设置"再继续
         if ((document.body.textContent || "").includes("正在为你检测风险内容")) {
-          n--; // 冻结超时
+          frozenMs += sinceLastTick; // 冻结超时（墙钟口径）
           detectTicks++;
           if (detectTicks % 5 === 1) setStatus("🛡️ 番茄正在检测风险内容，耐心等待…（" + detectTicks + "s）");
           return;
@@ -540,7 +550,7 @@
           setStatus("🔁 未见弹窗，重试点击下一步…");
         }
 
-        if (n >= 60) {
+        if (nowMs - startMs - frozenMs >= SUBMIT_CONFIRM_TIMEOUT_MS) {
           clearInterval(timer);
           resolve(false);
         }
