@@ -17,6 +17,7 @@ description: 中文动词前缀 commit 风格、master 主分支、版本号随 
   - `修复 3 个 bug：书名贯通会话、章节号解析、文档同步`
   - `fix: 版本冲突反复出现时快速失败触发重试,不再空等5分钟看门狗`
 - 一次 commit 一个逻辑变更；测试补充单独提交（如 `测试：覆盖四个新功能的回归`）；禁止 "wip"、裸 "fix"
+- 非平凡 bug 修复归档到 `docs/fixes/`（见 testing.md「缺陷归档」小节）时，commit message 末尾加 `(档案: docs/fixes/xxx.md)`
 - 版本发布：改 `manifest.json` version 后单独提交 `版本号 X.Y.Z → X.Y.Z+1`
 - 功能变更同步更新 `README.md` / `FEATURES.md`（doc-syncer 兜底，但提交时顺手改最好）
 
