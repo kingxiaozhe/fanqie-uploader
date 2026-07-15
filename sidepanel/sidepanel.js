@@ -28,7 +28,7 @@ $("retryFailed").addEventListener("click", async () => {
   s.rescheduleMode = "retry"; // 让调度器把重发章排到合适时段，而非甩到队尾
   await chrome.storage.local.remove("upload_control");
   await chrome.storage.local.set({ upload_session: s });
-  chrome.runtime.sendMessage({ type: "RESUME_UPLOAD" });
+  chrome.runtime.sendMessage({ type: "RESUME_UPLOAD" }).catch(() => {});
   $("retryFailed").textContent = `🔁 已重新排队 ${count} 章`;
   $("retryFailed").disabled = true;
 });

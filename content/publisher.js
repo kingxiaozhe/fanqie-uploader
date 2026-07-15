@@ -80,7 +80,7 @@
   // 顶部状态横幅 + 转发日志到后台（调试用，单看一处即可）
   function setStatus(text, level = "info") {
     console.log("[publisher]", text);
-    try { chrome.runtime.sendMessage({ type: "LOG", src: "publisher", text }); } catch (_) {}
+    try { chrome.runtime.sendMessage({ type: "LOG", src: "publisher", text }).catch(() => {}); } catch (_) {}
     if (!statusEl) {
       statusEl = document.createElement("div");
       statusEl.style.cssText =
@@ -95,7 +95,7 @@
   // 诊断日志：只进运行日志（不弹横幅），用于记录每一步的细节，让一份日志就能定位问题
   function dlog(text) {
     console.log("[publisher·d]", text);
-    try { chrome.runtime.sendMessage({ type: "LOG", src: "publisher", text: "· " + text }); } catch (_) {}
+    try { chrome.runtime.sendMessage({ type: "LOG", src: "publisher", text: "· " + text }).catch(() => {}); } catch (_) {}
   }
 
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
@@ -167,7 +167,7 @@
     batchPaused = true;
     dlog("🛑 风控暂停：" + reason);
     setStatus("🛑 检测到「" + reason + "」：已暂停全部上传，请在本页完成处理后再重新开始", "error");
-    try { chrome.runtime.sendMessage({ type: "PAUSE_BATCH", sessionId: currentSessionId, reason }); } catch (_) {}
+    try { chrome.runtime.sendMessage({ type: "PAUSE_BATCH", sessionId: currentSessionId, reason }).catch(() => {}); } catch (_) {}
   }
 
   // 启动：优先响应「选择器自检」请求（popup 打开发布页做诊断，不发布任何章节）；
@@ -343,7 +343,7 @@
 
       setStatus("🎉 发布成功，本页即将关闭", "success");
       // 通知调度器本章完成；rateLimited 让调度器自适应降速（这章虽成功但触发过限流）
-      chrome.runtime.sendMessage({ type: "TASK_DONE", taskId: task.id, sessionId, rateLimited: sawRateLimit });
+      chrome.runtime.sendMessage({ type: "TASK_DONE", taskId: task.id, sessionId, rateLimited: sawRateLimit }).catch(() => {});
     } catch (e) {
       // 风控已暂停整批：保留本页供用户处理，不上报失败、不关页（PAUSE_BATCH 已发出）
       if (batchPaused) { return; } // finally 仍会把 processing 置回
@@ -354,8 +354,8 @@
       dlog(`失败归类：[${reason}] ${detail}`);
       if (!DEBUG) {
         // 带上 submitted（防重复）+ reason/detail（失败归类）+ rateLimited（自适应降速）
-        chrome.runtime.sendMessage({ type: "TASK_FAILED", taskId: task.id, sessionId, submitted, reason, detail, rateLimited: sawRateLimit });
-        setTimeout(() => chrome.runtime.sendMessage({ type: "CLOSE_TAB" }), 1500);
+        chrome.runtime.sendMessage({ type: "TASK_FAILED", taskId: task.id, sessionId, submitted, reason, detail, rateLimited: sawRateLimit }).catch(() => {});
+        setTimeout(() => chrome.runtime.sendMessage({ type: "CLOSE_TAB" }).catch(() => {}), 1500);
       }
       // DEBUG=true：不关页、不上报失败，停在原地让你看横幅卡在哪一步
     } finally {
@@ -366,7 +366,7 @@
   // 响应停止信号：本章未提交，干净中止并通知调度器
   function abortByStop(task, sessionId) {
     setStatus("⏹ 已停止（本章未提交）", "warning");
-    chrome.runtime.sendMessage({ type: "TASK_STOPPED", taskId: task.id, sessionId });
+    chrome.runtime.sendMessage({ type: "TASK_STOPPED", taskId: task.id, sessionId }).catch(() => {});
     processing = false;
   }
 

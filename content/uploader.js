@@ -165,7 +165,7 @@
     const latest = apiLatest || findLatestScheduledDate();
     try {
       chrome.runtime.sendMessage({ type: "LOG", src: "uploader",
-        text: `📅 排期接续：最晚已排期=${latest ? toYMD(latest) : "未读到"}（来源:${apiLatest ? "接口全量" : "DOM当前页,可能漏读其他分页"}）` });
+        text: `📅 排期接续：最晚已排期=${latest ? toYMD(latest) : "未读到"}（来源:${apiLatest ? "接口全量" : "DOM当前页,可能漏读其他分页"}）` }).catch(() => {});
     } catch (_) {}
     const d = latest ? new Date(latest) : new Date();
     d.setDate(d.getDate() + 1);
@@ -215,7 +215,7 @@
       session.status = "stopped";
       await saveSession();
       setIndicator(`✋ 已达本次上限 ${maxBatch} 章，自动停止（可稍后再发）`, "warning");
-      chrome.runtime.sendMessage({ type: "NOTIFY", message: `已达本次上限 ${maxBatch} 章，自动停止` });
+      chrome.runtime.sendMessage({ type: "NOTIFY", message: `已达本次上限 ${maxBatch} 章，自动停止` }).catch(() => {});
       busy = false;
       return;
     }
@@ -232,7 +232,7 @@
       await saveSession();
       const ok = session.tasks.filter((t) => t.status === "uploaded").length;
       setIndicator(`✅ 全部完成！成功 ${ok}/${session.tasks.length} 章`, "success");
-      chrome.runtime.sendMessage({ type: "NOTIFY", message: `上传结束：成功 ${ok}/${session.tasks.length} 章` });
+      chrome.runtime.sendMessage({ type: "NOTIFY", message: `上传结束：成功 ${ok}/${session.tasks.length} 章` }).catch(() => {});
       busy = false;
       return;
     }
@@ -268,7 +268,7 @@
     chrome.runtime.sendMessage({
       type: "OPEN_PUBLISH_TAB",
       data: { url: publishUrl, task, sessionId: session.sessionId },
-    });
+    }).catch(() => {});
     armWatchdog(task.id); // 本章超时无响应则兜底，避免永久卡住
   }
 
@@ -284,7 +284,7 @@
       // 让后台关掉卡住的发布页：被 Chrome 节流的隐藏标签页脚本可能还在残留点击（僵尸页）。
       // 试填模式除外——那个页面是留给用户人工检查的
       if (!session?.settings?.dryRun) {
-        try { chrome.runtime.sendMessage({ type: "CLOSE_PUBLISH_TAB" }); } catch (_) {}
+        try { chrome.runtime.sendMessage({ type: "CLOSE_PUBLISH_TAB" }).catch(() => {}); } catch (_) {}
       }
       onTaskFailed(taskId, false, "超时未确认", "看门狗：单章 5 分钟无响应", false);
     }, CHAPTER_TIMEOUT);
@@ -313,7 +313,7 @@
     await saveSession();
     rateBackoff = 1; // 重置降速，下次重新开始干净起步
     setIndicator(`🛑 检测到风控（${reason || "安全验证"}），已自动暂停。处理完可重新开始/续传`, "error");
-    chrome.runtime.sendMessage({ type: "NOTIFY", message: `检测到风控（${reason || "安全验证"}），已自动暂停上传，请人工处理后再继续` });
+    chrome.runtime.sendMessage({ type: "NOTIFY", message: `检测到风控（${reason || "安全验证"}），已自动暂停上传，请人工处理后再继续` }).catch(() => {});
   }
 
   // 发布器在提交前响应了停止信号——本章未创建，干净停下
@@ -392,7 +392,7 @@
     if (t) { t.status = "failed"; t.failReason = reason || "其它"; t.failDetail = detail || ""; }
     console.warn("❌ 本章最终失败，跳过:", taskId, reason || "");
     // #3 失败时桌面通知，批量跑不用一直盯着（带上失败原因）
-    chrome.runtime.sendMessage({ type: "NOTIFY", message: `章节发布失败：${t?.title || taskId}（${reason || "原因未知"}，可稍后重发）` });
+    chrome.runtime.sendMessage({ type: "NOTIFY", message: `章节发布失败：${t?.title || taskId}（${reason || "原因未知"}，可稍后重发）` }).catch(() => {});
     session.currentIndex += 1;
     await saveSession();
     setTimeout(processNext, 1000 * pace());
@@ -588,7 +588,7 @@
       const text = useApi
         ? `📡 章节列表接口可用：全量同步 ${api.length} 章（跨分页）`
         : "↩️ 章节列表接口不可用，回退 DOM 抓取（仅当前页，多分页可能漏判）";
-      try { chrome.runtime.sendMessage({ type: "LOG", src: "uploader", text }); } catch (_) {}
+      try { chrome.runtime.sendMessage({ type: "LOG", src: "uploader", text }).catch(() => {}); } catch (_) {}
     }
     const result = useApi ? api : scrapePublishedChapters();
     lastPublishedList = result; // 缓存给排期接续用（computeScheduleStartDate 是同步函数）
@@ -729,7 +729,7 @@
   }
 
   function setIndicator(text, level = "info") {
-    try { chrome.runtime.sendMessage({ type: "LOG", src: "uploader", text }); } catch (_) {} // 进运行日志
+    try { chrome.runtime.sendMessage({ type: "LOG", src: "uploader", text }).catch(() => {}); } catch (_) {} // 进运行日志
     if (!indicator) return;
     const colors = { info: "#3498db", success: "#27ae60", warning: "#f39c12", error: "#e74c3c" };
     indicatorText.textContent = text;
