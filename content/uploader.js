@@ -17,6 +17,22 @@
   let awaitingTaskId = null; // 当前正在等待结果的章节 id（防重复推进 + 看门狗用）
   let watchdog = null;       // 看门狗计时器：本章超时无响应则按失败处理
   const CHAPTER_TIMEOUT = 300000; // 单章最长等待 5 分钟（风险检测可能较久 + 慢节奏留余量）
+
+  // 章节管理页表格选择器（集中管理，番茄改版对照调整；发布页选择器在 publisher.js 顶部 SEL）
+  const SEL = {
+    tableRow: "tbody .arco-table-tr",  // 章节列表行（DOM 回退抓取 + 最晚排期扫描）
+    rowTitle: ".table-title",          // 行内标题单元格
+  };
+
+  // 时延集中配置（毫秒）—— delay() 会另行乘节奏倍率 pace
+  const TIMINGS = {
+    spaRoute: 800,      // SPA 路由变化后重新判定页面
+    tableRender: 1500,  // 进章节管理页等表格渲染
+    syncBanner: 1200,   // 同步完成提示的停留
+    nextChapter: 1000,  // 本章结束到调度下一章的基准间隔（×pace）
+    retryGap: 1500,     // 失败重试前的基准间隔（×pace）
+    dedupRefresh: 800,  // 防重复查重前等接口/页面刷新出新章
+  };
   let rateBackoff = 1;       // #1.2 自适应限流降速倍率：触发 -1010 时放大章间间隔，平稳后回落（1~4）
 
   init();
@@ -48,7 +64,7 @@
     new MutationObserver(() => {
       if (location.href !== lastUrl) {
         lastUrl = location.href;
-        setTimeout(detectAndAct, 800);
+        setTimeout(detectAndAct, TIMINGS.spaRoute);
       }
     }).observe(document, { subtree: true, childList: true });
 
@@ -64,6 +80,9 @@
   let resumePrompted = false;
   async function detectAndAct() {
     if (!session || session.status === "completed") return;
+    // 发布页归 publisher 管：uploader 在这里保持静默，不刷"请进入章节管理页"提示
+    //（发布页也匹配 writer/* 注入了本脚本，SPA 变更会反复触发本函数 → 日志噪音）
+    if (/\/publish(\/|\?|$)/.test(location.href)) return;
     if (!/\/main\/writer\/chapter-manage\/\d+/.test(location.href)) {
       setIndicator("📚 请进入你要上传的小说『章节管理』页面", "info");
       return;
@@ -100,12 +119,12 @@
     busy = true;
 
     // ① 先同步：把页面上已存在的章节标记为已上传，避免重复发
-    await delay(1500); // 等表格渲染
+    await delay(TIMINGS.tableRender); // 等表格渲染
     const synced = await syncUploadedChapters();
     if (synced > 0) {
       setIndicator(`🔄 已同步 ${synced} 章为"已上传"，将跳过`, "info");
       await saveSession();
-      await delay(1200);
+      await delay(TIMINGS.syncBanner);
     }
 
     // ② 定时模式：确定起始日期（自动接续已排期 / 指定 / 明天）
@@ -139,10 +158,13 @@
     await processNext();
   }
 
+  function toYMD(d) {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }
+
   // 起始日期：auto=已排期最晚日期的次日；fixed=指定；tomorrow=明天。返回 YYYY-MM-DD
   function computeScheduleStartDate() {
     const s = session.settings || {};
-    const toYMD = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
     if (s.startDateMode === "fixed" && s.startDate) return s.startDate;
 
@@ -152,17 +174,34 @@
       return toYMD(d);
     }
 
-    // auto：读章节管理页里已排期的最晚日期，从次日开始；读不到则用明天
-    const latest = findLatestScheduledDate();
-    const d = latest || new Date();
+    // auto：优先用章节列表接口的【全量·跨分页】排期时间（同步时已缓存）——
+    // DOM 表格只有当前分页，最晚排期落在其他分页会读漏，接续起始日偏早、
+    // 撞上已排满的日期（-1020 每日上限）。接口没给时间字段时才回退 DOM 扫描。
+    const apiLatest = latestScheduledFromList(lastPublishedList);
+    const latest = apiLatest || findLatestScheduledDate();
+    try {
+      chrome.runtime.sendMessage({ type: "LOG", src: "uploader",
+        text: `📅 排期接续：最晚已排期=${latest ? toYMD(latest) : "未读到"}（来源:${apiLatest ? "接口全量" : "DOM当前页,可能漏读其他分页"}）` }).catch(() => {});
+    } catch (_) {}
+    const d = latest ? new Date(latest) : new Date();
     d.setDate(d.getDate() + 1);
     return toYMD(d);
+  }
+
+  // 从接口全量列表里取最晚发布/排期时间；条目都没有时间字段时返回 null（让上层回退 DOM）
+  function latestScheduledFromList(list) {
+    let latest = null;
+    for (const p of list || []) {
+      const ms = p && typeof p.publishMs === "number" ? p.publishMs : null;
+      if (ms && (!latest || ms > latest)) latest = ms;
+    }
+    return latest ? new Date(latest) : null;
   }
 
   // 扫描章节管理页表格，找出"发布时间"列里最晚的日期
   function findLatestScheduledDate() {
     let latest = null;
-    for (const row of document.querySelectorAll("tbody .arco-table-tr")) {
+    for (const row of document.querySelectorAll(SEL.tableRow)) {
       const m = (row.textContent || "").match(/(\d{4})-(\d{2})-(\d{2})(?:\s+(\d{2}):(\d{2}))?/);
       if (!m) continue;
       const d = new Date(+m[1], +m[2] - 1, +m[3], m[4] ? +m[4] : 0, m[5] ? +m[5] : 0);
@@ -192,7 +231,7 @@
       session.status = "stopped";
       await saveSession();
       setIndicator(`✋ 已达本次上限 ${maxBatch} 章，自动停止（可稍后再发）`, "warning");
-      chrome.runtime.sendMessage({ type: "NOTIFY", message: `已达本次上限 ${maxBatch} 章，自动停止` });
+      chrome.runtime.sendMessage({ type: "NOTIFY", message: `已达本次上限 ${maxBatch} 章，自动停止` }).catch(() => {});
       busy = false;
       return;
     }
@@ -209,7 +248,7 @@
       await saveSession();
       const ok = session.tasks.filter((t) => t.status === "uploaded").length;
       setIndicator(`✅ 全部完成！成功 ${ok}/${session.tasks.length} 章`, "success");
-      chrome.runtime.sendMessage({ type: "NOTIFY", message: `上传结束：成功 ${ok}/${session.tasks.length} 章` });
+      chrome.runtime.sendMessage({ type: "NOTIFY", message: `上传结束：成功 ${ok}/${session.tasks.length} 章` }).catch(() => {});
       busy = false;
       return;
     }
@@ -245,7 +284,7 @@
     chrome.runtime.sendMessage({
       type: "OPEN_PUBLISH_TAB",
       data: { url: publishUrl, task, sessionId: session.sessionId },
-    });
+    }).catch(() => {});
     armWatchdog(task.id); // 本章超时无响应则兜底，避免永久卡住
   }
 
@@ -258,6 +297,11 @@
       if (taskId !== awaitingTaskId) return;
       console.warn("⏰ 本章超时无响应，按失败处理:", taskId);
       setIndicator("⏰ 本章超时，自动处理", "warning");
+      // 让后台关掉卡住的发布页：被 Chrome 节流的隐藏标签页脚本可能还在残留点击（僵尸页）。
+      // 试填模式除外——那个页面是留给用户人工检查的
+      if (!session?.settings?.dryRun) {
+        try { chrome.runtime.sendMessage({ type: "CLOSE_PUBLISH_TAB" }).catch(() => {}); } catch (_) {}
+      }
       onTaskFailed(taskId, false, "超时未确认", "看门狗：单章 5 分钟无响应", false);
     }, CHAPTER_TIMEOUT);
   }
@@ -285,7 +329,7 @@
     await saveSession();
     rateBackoff = 1; // 重置降速，下次重新开始干净起步
     setIndicator(`🛑 检测到风控（${reason || "安全验证"}），已自动暂停。处理完可重新开始/续传`, "error");
-    chrome.runtime.sendMessage({ type: "NOTIFY", message: `检测到风控（${reason || "安全验证"}），已自动暂停上传，请人工处理后再继续` });
+    chrome.runtime.sendMessage({ type: "NOTIFY", message: `检测到风控（${reason || "安全验证"}），已自动暂停上传，请人工处理后再继续` }).catch(() => {});
   }
 
   // 发布器在提交前响应了停止信号——本章未创建，干净停下
@@ -316,7 +360,7 @@
     console.log("✅ 本章完成:", taskId);
     session.currentIndex += 1;
     await saveSession();
-    setTimeout(processNext, 1000 * pace());
+    setTimeout(processNext, TIMINGS.nextChapter * pace());
   }
 
   async function onTaskFailed(taskId, submitted, reason, detail, rateLimited) {
@@ -327,6 +371,13 @@
     const s = session.settings || {};
     const used = session.retries[taskId] || 0;
     const task = session.tasks.find((x) => x.id === taskId);
+
+    // -1020 每日上限：该排期日已满——后续待发章整体顺延一天重算，不再逐章硬试同一天
+    //（硬试必被拒：每章白烧一次内容检测额度，还多留一个未排期的孤儿草稿）
+    if (s.publishMode === "auto" && isDailyLimitRejection(reason, detail) && rescheduleAfterDailyLimit(taskId)) {
+      setIndicator(`📅 该日排期已满（每日上限），后续章节顺延到 ${session.scheduleStartDate} 起重排`, "warning");
+      await saveSession();
+    }
 
     // 防重复关键：若发布器已点过"下一步"(submitted)，章节草稿很可能已创建——
     // 此时绝不重试（重试会再建一个=重复）。能在列表里查到的标记"已发"，查不到的标记"失败"。
@@ -341,7 +392,7 @@
       setIndicator(`⏭️ 第 ${session.currentIndex + 1} 章已创建/已存在，跳过（防重复）`, "warning");
       session.currentIndex += 1;
       await saveSession();
-      setTimeout(processNext, 1000 * pace());
+      setTimeout(processNext, TIMINGS.nextChapter * pace());
       return;
     }
 
@@ -349,7 +400,7 @@
       session.retries[taskId] = used + 1;
       await saveSession();
       setIndicator(`🔁 第 ${session.currentIndex + 1} 章失败，重试 ${used + 1}/${s.maxRetries || 3}`, "warning");
-      setTimeout(processNext, 1500 * pace()); // 不前进 index，重发当前章
+      setTimeout(processNext, TIMINGS.retryGap * pace()); // 不前进 index，重发当前章
       return;
     }
 
@@ -357,10 +408,41 @@
     if (t) { t.status = "failed"; t.failReason = reason || "其它"; t.failDetail = detail || ""; }
     console.warn("❌ 本章最终失败，跳过:", taskId, reason || "");
     // #3 失败时桌面通知，批量跑不用一直盯着（带上失败原因）
-    chrome.runtime.sendMessage({ type: "NOTIFY", message: `章节发布失败：${t?.title || taskId}（${reason || "原因未知"}，可稍后重发）` });
+    chrome.runtime.sendMessage({ type: "NOTIFY", message: `章节发布失败：${t?.title || taskId}（${reason || "原因未知"}，可稍后重发）` }).catch(() => {});
     session.currentIndex += 1;
     await saveSession();
-    setTimeout(processNext, 1000 * pace());
+    setTimeout(processNext, TIMINGS.nextChapter * pace());
+  }
+
+  // 发布被拒是否为"每日上限"（接口 code=-1020，msg 如"更新作品数超出每日上限"）
+  function isDailyLimitRejection(reason, detail) {
+    return reason === "发布被拒" && /每日上限|超出每日|code=-1020\b/.test(detail || "");
+  }
+
+  // 失败章的排期日期 +1 天作为新起始日；时间无效回退"明天"
+  function bumpStartDate(publishTime) {
+    const ms = Date.parse(publishTime);
+    const d = isNaN(ms) ? new Date() : new Date(ms);
+    d.setDate(d.getDate() + 1);
+    return toYMD(d);
+  }
+
+  // 每日上限命中后：起始日改为失败章日期+1，后续待发章按新起始日整体重算。
+  // 返回是否真的顺延了（同一天连续多章 -1020 只顺延一次，不叠加）
+  function rescheduleAfterDailyLimit(failedTaskId) {
+    const failed = session.tasks.find((x) => x.id === failedTaskId);
+    if (!failed || !failed.publishTime || failed.publishTime === "now") return false;
+    const newStart = bumpStartDate(failed.publishTime);
+    if (session.scheduleStartDate && newStart <= session.scheduleStartDate) return false; // 已顺延过
+    session.scheduleStartDate = newStart;
+    let ord = 0;
+    for (const t of session.tasks) {
+      if (t.id === failedTaskId || t.status === "uploaded" || t.status === "failed") continue;
+      t.publishTime = computePublishTime(ord);
+      ord++;
+    }
+    console.log("📅 每日上限：排期起始日顺延至", newStart);
+    return true;
   }
 
   // #2.3 夜间避让：判断某时刻是否落在"不发布"时段（默认 23:00~07:00，跨午夜）
@@ -522,11 +604,33 @@
       const text = useApi
         ? `📡 章节列表接口可用：全量同步 ${api.length} 章（跨分页）`
         : "↩️ 章节列表接口不可用，回退 DOM 抓取（仅当前页，多分页可能漏判）";
-      try { chrome.runtime.sendMessage({ type: "LOG", src: "uploader", text }); } catch (_) {}
+      try { chrome.runtime.sendMessage({ type: "LOG", src: "uploader", text }).catch(() => {}); } catch (_) {}
     }
-    return useApi ? api : scrapePublishedChapters();
+    const result = useApi ? api : scrapePublishedChapters();
+    lastPublishedList = result; // 缓存给排期接续用（computeScheduleStartDate 是同步函数）
+    return result;
   }
   let lastPubSource = null;
+  let lastPublishedList = null;
+
+  // 从章节列表接口条目提取发布/排期时间，返回毫秒。字段名多版本探测；
+  // 兼容 秒/毫秒时间戳 与 "YYYY-MM-DD HH:mm:ss" 字符串；都拿不到返回 null（上层回退 DOM）
+  function pickScheduleMs(it) {
+    if (!it) return null;
+    for (const k of ["publish_time", "publish_timestamp", "online_time", "pub_time", "first_publish_time"]) {
+      const v = it[k];
+      if (v == null || v === "" || v === 0 || v === "0") continue;
+      if (typeof v === "number" || /^\d+$/.test(String(v))) {
+        const n = Number(v);
+        if (n > 1e12) return n;        // 毫秒级
+        if (n > 1e9) return n * 1000;  // 秒级
+        continue;                       // 数值太小，不是时间戳
+      }
+      const ms = Date.parse(String(v).replace(/-/g, "/")); // 斜杠格式确保按本地时区解析
+      if (!isNaN(ms)) return ms;
+    }
+    return null;
+  }
 
   // 直接同源调用 chapter_list 接口，翻完所有页返回 [{title, chapterNumber}]。
   // 任何异常/非 0 返回都返回 null，让上层回退 DOM。不带 msToken/a_bogus（读接口同源 + 会话 cookie 通常即可）。
@@ -551,7 +655,7 @@
           const title = (it.title || "").trim();
           if (!title) continue;
           const cm = title.match(/第\s*(\d+)\s*章/);
-          out.push({ title, chapterNumber: cm ? parseInt(cm[1], 10) : null });
+          out.push({ title, chapterNumber: cm ? parseInt(cm[1], 10) : null, publishMs: pickScheduleMs(it) });
         }
         const total = j.data.total_count || 0;
         if (!items.length || out.length >= total) break; // 翻完
@@ -566,9 +670,9 @@
 
   function scrapePublishedChapters() {
     const out = [];
-    const rows = document.querySelectorAll("tbody .arco-table-tr");
+    const rows = document.querySelectorAll(SEL.tableRow);
     for (const row of rows) {
-      const titleEl = row.querySelector(".table-title");
+      const titleEl = row.querySelector(SEL.rowTitle);
       const title = titleEl?.textContent?.trim();
       if (!title) continue;
       const m = title.match(/第\s*(\d+)\s*章/);
@@ -578,14 +682,15 @@
   }
 
   function sameTitle(a, b) {
-    const norm = (s) => (s || "").replace(/^\s*第\s*\d+\s*章[\s：:、.．·\-]*/, "").trim();
+    // 前缀兼容阿拉伯与中文数字：任务标题可能是"第二章 xx"，番茄侧存的是"第2章 xx"，须视为同章
+    const norm = (s) => (s || "").replace(/^\s*第\s*(?:\d+|[零〇一二两三四五六七八九十百千]+)\s*章[\s：:、.．·\-]*/, "").trim();
     const x = norm(a), y = norm(b);
     return !!x && (x === y || x.includes(y) || y.includes(x));
   }
 
   // 防重复：检查这一章是否已存在（按章节号或标题匹配，全量·跨分页）
   async function isChapterAlreadyPublished(task) {
-    await delay(800); // 给页面/接口一点时间刷新出新章
+    await delay(TIMINGS.dedupRefresh); // 给页面/接口一点时间刷新出新章
     const published = await getPublishedChapters();
     return published.some((p) =>
       (task.chapterNumber && p.chapterNumber === task.chapterNumber) ||
@@ -640,7 +745,7 @@
   }
 
   function setIndicator(text, level = "info") {
-    try { chrome.runtime.sendMessage({ type: "LOG", src: "uploader", text }); } catch (_) {} // 进运行日志
+    try { chrome.runtime.sendMessage({ type: "LOG", src: "uploader", text }).catch(() => {}); } catch (_) {} // 进运行日志
     if (!indicator) return;
     const colors = { info: "#3498db", success: "#27ae60", warning: "#f39c12", error: "#e74c3c" };
     indicatorText.textContent = text;
