@@ -17,6 +17,12 @@
   let awaitingTaskId = null; // 当前正在等待结果的章节 id（防重复推进 + 看门狗用）
   let watchdog = null;       // 看门狗计时器：本章超时无响应则按失败处理
   const CHAPTER_TIMEOUT = 300000; // 单章最长等待 5 分钟（风险检测可能较久 + 慢节奏留余量）
+
+  // 章节管理页表格选择器（集中管理，番茄改版对照调整；发布页选择器在 publisher.js 顶部 SEL）
+  const SEL = {
+    tableRow: "tbody .arco-table-tr",  // 章节列表行（DOM 回退抓取 + 最晚排期扫描）
+    rowTitle: ".table-title",          // 行内标题单元格
+  };
   let rateBackoff = 1;       // #1.2 自适应限流降速倍率：触发 -1010 时放大章间间隔，平稳后回落（1~4）
 
   init();
@@ -185,7 +191,7 @@
   // 扫描章节管理页表格，找出"发布时间"列里最晚的日期
   function findLatestScheduledDate() {
     let latest = null;
-    for (const row of document.querySelectorAll("tbody .arco-table-tr")) {
+    for (const row of document.querySelectorAll(SEL.tableRow)) {
       const m = (row.textContent || "").match(/(\d{4})-(\d{2})-(\d{2})(?:\s+(\d{2}):(\d{2}))?/);
       if (!m) continue;
       const d = new Date(+m[1], +m[2] - 1, +m[3], m[4] ? +m[4] : 0, m[5] ? +m[5] : 0);
@@ -654,9 +660,9 @@
 
   function scrapePublishedChapters() {
     const out = [];
-    const rows = document.querySelectorAll("tbody .arco-table-tr");
+    const rows = document.querySelectorAll(SEL.tableRow);
     for (const row of rows) {
-      const titleEl = row.querySelector(".table-title");
+      const titleEl = row.querySelector(SEL.rowTitle);
       const title = titleEl?.textContent?.trim();
       if (!title) continue;
       const m = title.match(/第\s*(\d+)\s*章/);

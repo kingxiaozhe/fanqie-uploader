@@ -57,6 +57,12 @@
     successToast: ".arco-message-success, .arco-notification-success",
     errorToast: ".arco-message-error, .arco-notification-error",
     radio: ".arco-radio",
+    modalAll: ".arco-modal",                       // 页面上所有弹窗（可见性扫描/二次确认遍历）
+    modalContent: ".arco-modal-content",           // 通用确认弹窗内容区
+    modalFooter: ".arco-modal-footer",             // 弹窗底部按钮区（确认发布只在这里找）
+    modalClose: ".arco-modal-close-icon, .arco-modal-close .arco-icon, .arco-icon-close", // 弹窗关闭按钮
+    modalHeader: ".arco-modal-header, .arco-modal-title", // 弹窗标题区（关浮层用的安全点击点）
+    dialogErrorLine: ".card-error-line",           // 发布弹窗内联校验错误行（暴露番茄拒绝原因）
   };
 
   // 用户是否已请求停止（进度面板/浮标/popup 的停止按钮写入 upload_control=stop）
@@ -545,14 +551,14 @@
         }
 
         // ② 其它确认类弹窗（错别字提示 / 二次确认等）——直接点确认
-        const genericModal = document.querySelector(".arco-modal-content");
+        const genericModal = document.querySelector(SEL.modalContent);
         if (genericModal && !publishDialog) {
           const confirm = document.querySelector(SEL.modalPrimary);
           if (confirm) realClick(confirm);
         }
 
         // 补救：若一直没出现任何弹窗（说明"下一步"那下没生效），每 4 秒重点一次
-        if (n % 4 === 0 && !document.querySelector(".arco-modal")) {
+        if (n % 4 === 0 && !document.querySelector(SEL.modalAll)) {
           clickSubmit();
           setStatus("🔁 未见弹窗，重试点击下一步…");
         }
@@ -609,7 +615,7 @@
 
         // 确认发布后可能弹"二次确认"小窗（超7天/夜间发文等）——点掉可见小窗的主按钮继续
         let secondaryHandled = false;
-        for (const m of document.querySelectorAll(".arco-modal")) {
+        for (const m of document.querySelectorAll(SEL.modalAll)) {
           if (m.classList.contains("publish-confirm-container-new")) continue;
           if (!visible(m)) continue;
           const p = m.querySelector("button.arco-btn-primary");
@@ -620,7 +626,7 @@
         // 内联校验错误：弹窗里 .card-error-line 有文字 = 番茄拒绝了（如时间不合规），暴露真实原因
         if (!dialogClosed) {
           const dlg = document.querySelector(SEL.publishDialog);
-          const errLine = dlg && [...dlg.querySelectorAll(".card-error-line")]
+          const errLine = dlg && [...dlg.querySelectorAll(SEL.dialogErrorLine)]
             .map((e) => (e.textContent || "").trim()).find((t) => t.length > 1);
           if (errLine) {
             setStatus("❌ 发布弹窗校验不通过：" + errLine, "error");
@@ -632,7 +638,7 @@
 
         // 自愈：发布弹窗还开着且等了较久——大概率"确认发布"那下没生效，自动重点（间隔≥4s 墙钟）
         if (!dialogClosed && elapsedMs > 4000 && nowMs - lastReclickMs >= 4000) {
-          const footer = document.querySelector(SEL.publishDialog + " .arco-modal-footer");
+          const footer = document.querySelector(SEL.publishDialog + " " + SEL.modalFooter);
           const again = footer && [...footer.querySelectorAll("button.arco-btn-primary")]
             .find((b) => (b.textContent || "").includes("确认发布"));
           if (again) {
@@ -646,7 +652,7 @@
 
         // ⚠️ "弹窗关闭"判成功必须同时满足：页面上没有任何可见弹窗 + 持续一段时间。
         // 否则"发布弹窗关→二次确认弹出"的空档会被误判成功，提前开下一章的 tab。
-        const anyModalVisible = [...document.querySelectorAll(".arco-modal")].some(visible);
+        const anyModalVisible = [...document.querySelectorAll(SEL.modalAll)].some(visible);
         if (onManage || leftPublish || successToast || (dialogClosed && !anyModalVisible && elapsedMs >= 3200)) {
           clearInterval(timer);
           resolve(true);
@@ -657,7 +663,7 @@
           const ok2 = onManage || leftPublish || dialogClosed;
           if (!ok2) {
             // 诊断现场：把 URL 和当前可见弹窗记下来，便于定位是哪个弹窗挡住了
-            const mods = [...document.querySelectorAll(".arco-modal")].filter(visible)
+            const mods = [...document.querySelectorAll(SEL.modalAll)].filter(visible)
               .map((m) => m.className.split(" ").slice(0, 2).join("."));
             setStatus("⌛ 超时 url=" + location.pathname.slice(-30) + " 可见弹窗=" + (mods.join("|") || "无"), "error");
           } else {
@@ -680,7 +686,7 @@
     const dlg = document.querySelector(SEL.publishDialog);
     // 关闭弹窗：优先点关闭图标 / 取消按钮，兜底按 Esc
     const closeBtn = dlg && (
-      dlg.querySelector(".arco-modal-close-icon, .arco-modal-close .arco-icon, .arco-icon-close") ||
+      dlg.querySelector(SEL.modalClose) ||
       [...dlg.querySelectorAll("button")].find((b) => ["取消", "关闭"].includes((b.textContent || "").trim()))
     );
     if (closeBtn) { realClick(closeBtn); dlog("存草稿：点关闭/取消按钮"); }
@@ -690,7 +696,7 @@
     }
     await delay(700);
     // 番茄可能弹「确认放弃发布?」二次确认——若出现，点主按钮确认放弃（草稿仍在）
-    for (const m of document.querySelectorAll(".arco-modal")) {
+    for (const m of document.querySelectorAll(SEL.modalAll)) {
       if (m.classList.contains("publish-confirm-container-new")) continue;
       const r = m.getBoundingClientRect();
       if (r.width < 2 || r.height < 2) continue;
@@ -854,7 +860,7 @@
   // 否则下拉开着时，点"确认发布"那一下只会关浮层、不会真正提交，导致卡住超时。
   function closePickerDropdowns() {
     const dlg = document.querySelector(SEL.publishDialog);
-    const spot = dlg?.querySelector(".arco-modal-header, .arco-modal-title") || dlg;
+    const spot = dlg?.querySelector(SEL.modalHeader) || dlg;
     if (spot) {
       spot.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, view: window }));
       spot.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, cancelable: true, view: window }));
@@ -868,7 +874,7 @@
     // ⚠️ 只在弹窗【底部 footer】找主按钮！弹窗里还藏着时间选择器的"确定"按钮，
     //    若全局搜会误点那个隐藏的"确定"（它在 DOM 里排在前面），导致发布点不动。
     const dialog = document.querySelector(SEL.publishDialog) || document;
-    const footer = dialog.querySelector(".arco-modal-footer") || dialog;
+    const footer = dialog.querySelector(SEL.modalFooter) || dialog;
     const primaries = [...footer.querySelectorAll("button.arco-btn-primary")];
     let btn = primaries.find((b) => (b.textContent || "").trim().includes("确认发布")) || primaries[0];
     if (!btn) throw new Error("未找到『确认发布』按钮");
