@@ -666,7 +666,8 @@
   }
 
   function sameTitle(a, b) {
-    const norm = (s) => (s || "").replace(/^\s*第\s*\d+\s*章[\s：:、.．·\-]*/, "").trim();
+    // 前缀兼容阿拉伯与中文数字：任务标题可能是"第二章 xx"，番茄侧存的是"第2章 xx"，须视为同章
+    const norm = (s) => (s || "").replace(/^\s*第\s*(?:\d+|[零〇一二两三四五六七八九十百千]+)\s*章[\s：:、.．·\-]*/, "").trim();
     const x = norm(a), y = norm(b);
     return !!x && (x === y || x.includes(y) || y.includes(x));
   }

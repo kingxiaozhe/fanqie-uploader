@@ -37,7 +37,12 @@ eval(extract(up, "isDailyLimitRejection"));
 eval(extract(up, "rescheduleAfterDailyLimit"));
 eval(extract(pub, "classifyFailure"));
 eval(extract(pub, "detectRiskControl"));
+eval(extract(pub, "pureTitle"));
+eval(extract(pub, "extractNumber"));
+eval(extract(up, "sameTitle"));
+eval(extract(popup, "cnToInt"));
 eval(extract(popup, "numFromName"));
+eval(extract(popup, "numFromText"));
 
 let P = 0, F = 0;
 const ok = (n, c, g) => { if (c) { P++; console.log("✅ " + n); } else { F++; console.log("❌ " + n + "  → " + JSON.stringify(g)); } };
@@ -159,6 +164,25 @@ ok("章节号: v2第3章.txt → 3(不取版本号)", numFromName("v2第3章.txt
 ok("章节号: 第 56 章.txt → 56(容空格)", numFromName("第 56 章.txt") === 56, numFromName("第 56 章.txt"));
 ok("章节号: 5 标题.txt → 5(无第章退首数字)", numFromName("5 标题.txt") === 5, numFromName("5 标题.txt"));
 ok("章节号: 无数字 → null", numFromName("序章.txt") === null);
+
+// ---- 中文数字章节：标题剥前缀 + 章节号解析（修复"第二十章 xx"前缀原样进标题框）----
+ok("中文数字: cnToInt 二十 → 20", cnToInt("二十") === 20);
+ok("中文数字: cnToInt 三十九 → 39", cnToInt("三十九") === 39);
+ok("中文数字: cnToInt 一百零五 → 105", cnToInt("一百零五") === 105);
+ok("中文数字: cnToInt 十 → 10", cnToInt("十") === 10);
+ok("中文数字: cnToInt 两百 → 200", cnToInt("两百") === 200);
+ok("中文数字: cnToInt 非法字符 → null", cnToInt("甲乙") === null);
+ok("章节号: 第二十章 xx.md → 20", numFromName("第二十章 你好啊林光源.md") === 20, numFromName("第二十章 你好啊林光源.md"));
+ok("章节号: 第一百零五章.txt → 105", numFromName("第一百零五章.txt") === 105);
+ok("章节号: 正文首行中文数字 → 20", numFromText("第二十章 你好啊林光源\n正文…") === 20);
+ok("标题剥前缀: 第20章 你好啊林光源 → 你好啊林光源", pureTitle("第20章 你好啊林光源") === "你好啊林光源");
+ok("标题剥前缀: 第二十章 你好啊林光源 → 你好啊林光源(用户案例)", pureTitle("第二十章 你好啊林光源") === "你好啊林光源", pureTitle("第二十章 你好啊林光源"));
+ok("标题剥前缀: 第 56 章 代价 → 代价(容空格)", pureTitle("第 56 章 代价") === "代价");
+ok("标题剥前缀: 第二章：重算这笔账 → 重算这笔账(冒号分隔)", pureTitle("第二章：重算这笔账") === "重算这笔账");
+ok("标题剥前缀: 无前缀不变", pureTitle("你好啊林光源") === "你好啊林光源");
+ok("标题剥前缀: 剥空回退原标题", pureTitle("第二章") === "第二章");
+ok("章节号兜底: extractNumber 第二十章 → 20", extractNumber("第二十章 你好") === 20);
+ok("去重归一: 中文/阿拉伯数字前缀视为同章", sameTitle("第2章 重算这笔账", "第二章 重算这笔账"));
 
 console.log(`\n内容脚本逻辑：${P}/${P + F} 通过`);
 process.exit(F ? 1 : 0);

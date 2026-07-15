@@ -393,10 +393,16 @@
     }
     const titleInput = findTitleInput();
     if (!titleInput) throw new Error("未找到标题输入框");
-    // 去掉"第N章"前缀（章节号已单独填入）。兼容"第 56 章"这种带空格的写法，及冒号/顿号等分隔符
-    const pure = task.title.replace(/^\s*第\s*\d+\s*章[\s：:、.．·\-]*/, "").trim() || task.title;
+    const pure = pureTitle(task.title);
     dlog(`填标题：章节号框${numInput ? "✓" : "✗"} 标题="${pure}"`);
     await typeInto(titleInput, pure);
+  }
+
+  // 去掉"第N章"前缀（章节号已单独填入）。兼容阿拉伯与中文数字（第20章/第二十章/第 56 章）
+  // 及冒号/顿号等分隔符；剥空则回退原标题（标题只有"第二章"这种纯章名时不留空）
+  function pureTitle(title) {
+    const t = title || "";
+    return t.replace(/^\s*第\s*(?:\d+|[零〇一二两三四五六七八九十百千]+)\s*章[\s：:、.．·\-]*/, "").trim() || t;
   }
 
   // 受控组件：逐字符写入并派发 input/change 事件
@@ -948,8 +954,24 @@
   }
 
   function extractNumber(title) {
-    const m = (title || "").match(/第\s*(\d+)\s*章/);
-    return m ? parseInt(m[1], 10) : null;
+    const t = title || "";
+    const m = t.match(/第\s*(\d+)\s*章/);
+    if (m) return parseInt(m[1], 10);
+    const cn = t.match(/第\s*([零〇一二两三四五六七八九十百千]+)\s*章/); // 中文数字章节名
+    return cn ? cnToInt(cn[1]) : null;
+  }
+
+  // 中文数字 → 整数（二十→20、三十九→39、一百零五→105、两百→200）；含非法字符返回 null
+  function cnToInt(s) {
+    const digit = { 零: 0, 〇: 0, 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
+    const unit = { 十: 10, 百: 100, 千: 1000 };
+    let total = 0, cur = 0;
+    for (const ch of s || "") {
+      if (ch in digit) cur = digit[ch];
+      else if (ch in unit) { total += (cur || 1) * unit[ch]; cur = 0; }
+      else return null;
+    }
+    return total + cur;
   }
 
   function delay(ms) {

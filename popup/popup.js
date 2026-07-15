@@ -293,7 +293,7 @@ async function onFolderPicked(e) {
 
 // ---------- 移除已发布章节：读取当前番茄书的已发列表，从本地任务里剔除 ----------
 function sameTitleLoose(a, b) {
-  const norm = (s) => (s || "").replace(/^\s*第\s*\d+\s*章[\s：:、.．·\-]*/, "").trim();
+  const norm = (s) => (s || "").replace(/^\s*第\s*(?:\d+|[零〇一二两三四五六七八九十百千]+)\s*章[\s：:、.．·\-]*/, "").trim();
   const x = norm(a), y = norm(b);
   return !!x && (x === y || x.includes(y) || y.includes(x));
 }
@@ -479,13 +479,31 @@ function numFromName(name) {
   // 优先「第N章」：避免被文件名里的其它数字（年份/版本号如 "2024第5章"、"v2第3章"）带偏
   const zh = name.match(/第\s*(\d+)\s*章/);
   if (zh) return parseInt(zh[1], 10);
+  // 中文数字章节名（第二十章 / 第一百零五章）——排序与章节号框都靠它
+  const cn = name.match(/第\s*([零〇一二两三四五六七八九十百千]+)\s*章/);
+  if (cn) { const n = cnToInt(cn[1]); if (n) return n; }
   // 退而求其次：取第一个数字（兼容 "001.txt"、"5 标题.txt" 这类纯数字命名）
   const m = name.match(/(\d+)/);
   return m ? parseInt(m[1], 10) : null;
 }
 function numFromText(text) {
-  const m = text.slice(0, 50).match(/第\s*(\d+)\s*章/);
-  return m ? parseInt(m[1], 10) : null;
+  const head = text.slice(0, 50);
+  const m = head.match(/第\s*(\d+)\s*章/);
+  if (m) return parseInt(m[1], 10);
+  const cn = head.match(/第\s*([零〇一二两三四五六七八九十百千]+)\s*章/);
+  return cn ? cnToInt(cn[1]) : null;
+}
+// 中文数字 → 整数（二十→20、三十九→39、一百零五→105、两百→200）；含非法字符返回 null
+function cnToInt(s) {
+  const digit = { 零: 0, 〇: 0, 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
+  const unit = { 十: 10, 百: 100, 千: 1000 };
+  let total = 0, cur = 0;
+  for (const ch of s || "") {
+    if (ch in digit) cur = digit[ch];
+    else if (ch in unit) { total += (cur || 1) * unit[ch]; cur = 0; }
+    else return null;
+  }
+  return total + cur;
 }
 // 把一篇文档拆成「标题 + 正文」，并清理 Markdown 标记
 // 规则：首个非空行当标题（清掉 # / ** 等）；其余为正文。
