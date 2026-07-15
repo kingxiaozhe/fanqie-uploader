@@ -113,6 +113,7 @@
   let netPublishResult = null;
   let sawRateLimit = false; // 本章是否出现过限流(-1010)——用于自适应降速 + 失败归类
   const SUBMIT_CONFIRM_TIMEOUT_MS = 60000; // 提交确认墙钟超时（真实时间，不受后台节流影响）
+  const PUBLISH_RESULT_TIMEOUT_MS = 32000; // 发布结果判定墙钟超时（原 40 tick×800ms 的等价预算）
   // 暂时性限流（-1010 操作太频繁 / 稍后再试）：番茄前端会自动重发到成功，
   // 不能当成终局失败——否则轮询恰好先抓到这一条就会把已成功的章节误判为失败。
   const isTransientFail = (r) =>
@@ -568,11 +569,15 @@
   // 出现错误提示 = 失败。（番茄发定时章节不会跳页，所以不能只看 URL）
   function waitForPublishResult() {
     return new Promise((resolve) => {
-      let n = 0;
+      // 计时全部用【墙钟】而非 tick 计数：隐藏标签页定时器被 Chrome 节流（>5min 后 1 次/分钟）
+      // 会把计数型预算拉长几十倍，期间反复重点「确认发布」（同僵尸页根因，见 fixes 档案）
+      const startMs = Date.now();
+      let lastReclickMs = startMs;
       // 可见性判断：用 getBoundingClientRect（对 position:fixed 的弹窗/toast 也正确；offsetParent 对 fixed 恒为 null 会误判）
       const visible = (el) => { if (!el) return false; const r = el.getBoundingClientRect(); return r.width > 1 && r.height > 1; };
       const timer = setInterval(() => {
-        n++;
+        const nowMs = Date.now();
+        const elapsedMs = nowMs - startMs;
 
         // ★ 权威信号：番茄发布接口的返回（net-hook 截获）。有结果就以它为准，最可靠。
         if (netPublishResult) {
@@ -625,15 +630,16 @@
           }
         }
 
-        // 自愈：发布弹窗还开着且等了较久——大概率"确认发布"那下没生效，自动重点（更频繁）
-        if (!dialogClosed && n > 4 && n % 5 === 0) {
+        // 自愈：发布弹窗还开着且等了较久——大概率"确认发布"那下没生效，自动重点（间隔≥4s 墙钟）
+        if (!dialogClosed && elapsedMs > 4000 && nowMs - lastReclickMs >= 4000) {
           const footer = document.querySelector(SEL.publishDialog + " .arco-modal-footer");
           const again = footer && [...footer.querySelectorAll("button.arco-btn-primary")]
             .find((b) => (b.textContent || "").includes("确认发布"));
           if (again) {
+            lastReclickMs = nowMs;
             closePickerDropdowns();          // 先关掉可能挡住的日期/时间浮层
             realClick(again);                // 单击即可，避免重复提交触发 -1010
-            setStatus("🔁 弹窗未关，重点「确认发布」(" + n + ")…");
+            setStatus("🔁 弹窗未关，重点「确认发布」(" + Math.round(elapsedMs / 1000) + "s)…");
             return;
           }
         }
@@ -641,12 +647,12 @@
         // ⚠️ "弹窗关闭"判成功必须同时满足：页面上没有任何可见弹窗 + 持续一段时间。
         // 否则"发布弹窗关→二次确认弹出"的空档会被误判成功，提前开下一章的 tab。
         const anyModalVisible = [...document.querySelectorAll(".arco-modal")].some(visible);
-        if (onManage || leftPublish || successToast || (dialogClosed && !anyModalVisible && n >= 4)) {
+        if (onManage || leftPublish || successToast || (dialogClosed && !anyModalVisible && elapsedMs >= 3200)) {
           clearInterval(timer);
           resolve(true);
           return;
         }
-        if (n >= 40) {
+        if (elapsedMs >= PUBLISH_RESULT_TIMEOUT_MS) {
           // 超时前最后兜底：已离开发布页 或 弹窗已不可见 = 其实成功了
           const ok2 = onManage || leftPublish || dialogClosed;
           if (!ok2) {
