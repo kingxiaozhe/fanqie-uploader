@@ -185,6 +185,13 @@
     } catch (_) {}
     const d = latest ? new Date(latest) : new Date();
     d.setDate(d.getDate() + 1);
+    // 接续起始日不得早于明天：读到的「最晚已排期」可能是很久以前（本地 DOM 只有旧分页 /
+    // 历史章节），+1 后仍落在过去，会把所有定时时间排到过去 → 番茄前端拒收(过去时间不可定时)，
+    // 整批全灭且被错报「超时未确认」。用「明天 00:00」兜底，落在过去就抬到明天。
+    const tomorrow = new Date();
+    tomorrow.setHours(0, 0, 0, 0);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    if (d < tomorrow) return toYMD(tomorrow);
     return toYMD(d);
   }
 

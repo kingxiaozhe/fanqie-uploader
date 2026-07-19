@@ -118,6 +118,7 @@
   // 接收 net-hook 截获的"发布接口"权威结果（成功与否以番茄接口返回为准）
   let netPublishResult = null;
   let sawRateLimit = false; // 本章是否出现过限流(-1010)——用于自适应降速 + 失败归类
+  let submitRejectDetail = null; // 发布弹窗内联校验/错误提示暴露的真实拒绝原因（如"定时时间不能早于当前时间"）
   const SUBMIT_CONFIRM_TIMEOUT_MS = 60000; // 提交确认墙钟超时（真实时间，不受后台节流影响）
   const PUBLISH_RESULT_TIMEOUT_MS = 32000; // 发布结果判定墙钟超时（原 40 tick×800ms 的等价预算）
 
@@ -170,6 +171,9 @@
       return { reason: "发布被拒", detail: m || ("code=" + r.code) };
     }
     if (sawRateLimit) return { reason: "限流", detail: "操作太频繁，番茄多次返回 -1010" };
+    // 发布弹窗内联校验/错误提示（走不到接口，netPublishResult 为空）：优先暴露真实原因，
+    // 别让"定时时间不能早于当前时间"这类拒绝被下面的兜底错报成「超时未确认」。
+    if (submitRejectDetail) return { reason: "校验不通过", detail: submitRejectDetail };
     if (/版本冲突/.test(msg)) return { reason: "版本冲突", detail: msg };
     if (/正文/.test(msg)) return { reason: "正文未填入", detail: msg };
     if (/未找到|找不到/.test(msg)) return { reason: "页面元素缺失", detail: msg };
@@ -311,6 +315,7 @@
     currentSessionId = sessionId;
     dialogHandled = false;
     submitted = false;
+    submitRejectDetail = null; // 复位上一章遗留的拒绝原因
 
     // #2.1 进页就先查风控：若已弹验证码/账号异常，立刻暂停整批，别再操作
     const earlyRisk = detectRiskControl();
@@ -629,6 +634,7 @@
           const t = (errToast.textContent || "").trim();
           const benign = ["错别字", "忽略", "替换"].some((k) => t.includes(k));
           if (!benign && t.length > 3) {
+            submitRejectDetail = t; // 暴露真实原因给失败归类
             setStatus("❌ 发布报错：" + t, "error");
             clearInterval(timer);
             resolve(false);
@@ -652,6 +658,7 @@
           const errLine = dlg && [...dlg.querySelectorAll(SEL.dialogErrorLine)]
             .map((e) => (e.textContent || "").trim()).find((t) => t.length > 1);
           if (errLine) {
+            submitRejectDetail = errLine; // 暴露真实原因给失败归类（如定时时间不合规）
             setStatus("❌ 发布弹窗校验不通过：" + errLine, "error");
             clearInterval(timer);
             resolve(false);
