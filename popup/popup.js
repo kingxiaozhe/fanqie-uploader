@@ -269,7 +269,7 @@ async function onFolderPicked(e) {
 
   tasks = [];
   for (const f of files) {
-    const raw = (await f.text()).replace(/\r\n/g, "\n").trim();
+    const raw = decodeChapterBytes(await f.arrayBuffer()).replace(/\r\n/g, "\n").trim();
     const { title, content } = splitTitleBody(raw, f.name);
     const chapterNumber = numFromName(f.name) || numFromText(raw);
     tasks.push({
@@ -505,6 +505,27 @@ function cnToInt(s) {
   }
   return total + cur;
 }
+
+// 把文件字节按编码解出文本：BOM 优先，无 BOM 用 UTF-8 严格解码试探，失败回退 GBK。
+// 老作者 / 记事本导出的 txt 常是 GBK，直接 f.text() 只按 UTF-8 解码会整章乱码。
+// 只用浏览器原生 TextDecoder（含 gbk 标签，映射 GB18030 解码器），零依赖。
+function decodeChapterBytes(buf) {
+  const bytes = new Uint8Array(buf);
+  // BOM 判定：EF BB BF=UTF-8；FF FE=UTF-16LE；FE FF=UTF-16BE
+  if (bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf)
+    return new TextDecoder("utf-8").decode(bytes.subarray(3));
+  if (bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xfe)
+    return new TextDecoder("utf-16le").decode(bytes.subarray(2));
+  if (bytes.length >= 2 && bytes[0] === 0xfe && bytes[1] === 0xff)
+    return new TextDecoder("utf-16be").decode(bytes.subarray(2));
+  // 无 BOM：先 UTF-8 严格解码，遇非法字节序列抛错 → 判为非 UTF-8，回退 GBK
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch (_) {
+    return new TextDecoder("gbk").decode(bytes);
+  }
+}
+
 // 把一篇文档拆成「标题 + 正文」，并清理 Markdown 标记
 // 规则：首个非空行当标题（清掉 # / ** 等）；其余为正文。
 //      若首行太长(>40字)更像正文，则用文件名当标题、整篇当正文。
