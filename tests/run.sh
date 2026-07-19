@@ -7,7 +7,7 @@ echo "▶ 内容脚本逻辑测试"
 node "$DIR/logic.test.cjs"
 
 # 基于 playwright 的 UI/集成测试（按需逐个跑）
-UI_TESTS=(popup-ui.test.cjs perbook.test.cjs selftest.test.cjs)
+UI_TESTS=(popup-ui.test.cjs import-ui.test.cjs perbook.test.cjs selftest.test.cjs)
 
 # 定位 playwright：项目已装则直接用，否则尝试 npx 缓存
 PW_NODE_PATH=""
