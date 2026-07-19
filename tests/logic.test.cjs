@@ -49,6 +49,10 @@ eval(extract(popup, "cnToInt"));
 eval(extract(popup, "numFromName"));
 eval(extract(popup, "numFromText"));
 eval(extract(popup, "decodeChapterBytes"));
+eval(extract(popup, "readEOCD"));
+eval(extract(popup, "readCentralDir"));
+eval(extract(popup, "sliceEntryData"));
+eval(extract(popup, "isChapterEntry"));
 
 let P = 0, F = 0;
 const ok = (n, c, g) => { if (c) { P++; console.log("✅ " + n); } else { F++; console.log("❌ " + n + "  → " + JSON.stringify(g)); } };
@@ -228,6 +232,35 @@ ok("编码: 空内容不崩", decodeChapterBytes(abuf([])) === "");
 // 不追求算法覆盖此歧义（真实整章 GBK 稿几乎不可能全程合法 UTF-8）——用例锁定当前行为，
 // 避免上面的 GBK 用例造成"GBK 永远兜底成功"的安慰剂错觉（Codex r1 采纳）。
 ok("编码: 合法UTF-8优先(已知GBK歧义边界 C2 A1→¡)", decodeChapterBytes(abuf([0xc2, 0xa1])) === "¡");
+
+// ---- ZIP 解析同步部分（readEOCD/readCentralDir/sliceEntryData）；DEFLATE 端到端解压依赖 ----
+// ---- async + DecompressionStream，不在本零依赖沙箱覆盖，须走 playwright/人工（见 design B7）。----
+const zipDv = (arr) => new DataView(Uint8Array.from(arr).buffer);
+// 真实 `zip -0 -X` 生成的 STORED 压缩包：第1章.txt / 第2章.txt（UTF-8 文件名）
+const BOOK = [80, 75, 3, 4, 10, 0, 0, 0, 0, 0, 71, 183, 243, 92, 62, 46, 178, 145, 32, 0, 0, 0, 32, 0, 0, 0, 11, 0, 0, 0, 231, 172, 172, 49, 231, 171, 160, 46, 116, 120, 116, 231, 172, 172, 228, 184, 128, 231, 171, 160, 32, 232, 181, 183, 232, 136, 170, 10, 230, 173, 163, 230, 150, 135, 228, 184, 128, 228, 186, 140, 228, 184, 137, 80, 75, 3, 4, 10, 0, 0, 0, 0, 0, 71, 183, 243, 92, 95, 194, 237, 162, 32, 0, 0, 0, 32, 0, 0, 0, 11, 0, 0, 0, 231, 172, 172, 50, 231, 171, 160, 46, 116, 120, 116, 231, 172, 172, 228, 186, 140, 231, 171, 160, 32, 233, 163, 142, 230, 179, 162, 10, 230, 173, 163, 230, 150, 135, 229, 155, 155, 228, 186, 148, 229, 133, 173, 80, 75, 1, 2, 30, 3, 10, 0, 0, 0, 0, 0, 71, 183, 243, 92, 62, 46, 178, 145, 32, 0, 0, 0, 32, 0, 0, 0, 11, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 164, 129, 0, 0, 0, 0, 231, 172, 172, 49, 231, 171, 160, 46, 116, 120, 116, 80, 75, 1, 2, 30, 3, 10, 0, 0, 0, 0, 0, 71, 183, 243, 92, 95, 194, 237, 162, 32, 0, 0, 0, 32, 0, 0, 0, 11, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 164, 129, 73, 0, 0, 0, 231, 172, 172, 50, 231, 171, 160, 46, 116, 120, 116, 80, 75, 5, 6, 0, 0, 0, 0, 2, 0, 2, 0, 114, 0, 0, 0, 146, 0, 0, 0, 0, 0];
+const eocdB = readEOCD(zipDv(BOOK));
+ok("ZIP: EOCD 定位(2条目)", eocdB.cdCount === 2 && eocdB.cdOffset === 146, eocdB);
+const entB = readCentralDir(zipDv(BOOK), eocdB);
+ok("ZIP: 中央目录读出2条", entB.length === 2);
+ok("ZIP: 文件名 UTF-8 解码", decodeChapterBytes(entB[0].nameBytes.buffer) === "第1章.txt", decodeChapterBytes(entB[0].nameBytes.buffer));
+ok("ZIP: STORED 方法识别", entB[0].method === 0);
+ok("ZIP: STORED 切片内容", decodeChapterBytes(sliceEntryData(zipDv(BOOK), entB[0]).slice.buffer).startsWith("第一章 起航"));
+// bit3 流式写入（局部头 size=0）：切片长度须取自中央目录，否则出空章（评审 B2）
+const BIT3 = [80, 75, 3, 4, 10, 0, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 97, 46, 116, 120, 116, 104, 101, 108, 108, 111, 80, 75, 7, 8, 134, 166, 16, 54, 5, 0, 0, 0, 5, 0, 0, 0, 80, 75, 1, 2, 30, 3, 10, 0, 8, 0, 0, 0, 0, 0, 0, 0, 134, 166, 16, 54, 5, 0, 0, 0, 5, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 97, 46, 116, 120, 116, 80, 75, 5, 6, 0, 0, 0, 0, 1, 0, 1, 0, 51, 0, 0, 0, 56, 0, 0, 0, 0, 0];
+{
+  const dvb = zipDv(BIT3);
+  const e = readCentralDir(dvb, readEOCD(dvb));
+  const { slice } = sliceEntryData(dvb, e[0]);
+  ok("ZIP: bit3流式切片取中央目录size(B2)", slice.length === 5 && decodeChapterBytes(slice.buffer) === "hello", slice.length);
+}
+ok("ZIP: 非 ZIP 字节抛错", (() => { try { readEOCD(zipDv([1, 2, 3, 4, 5, 6, 7, 8])); return false; } catch (_) { return true; } })());
+// 章节条目过滤（先过滤再解压：剔元数据/隐藏文件与目录/非章节扩展）
+ok("过滤: 普通章节保留", isChapterEntry("第1章.txt") && isChapterEntry("sub/第2章.md"));
+ok("过滤: __MACOSX 剔除", !isChapterEntry("__MACOSX/._第1章.txt"));
+ok("过滤: 隐藏文件/目录剔除", !isChapterEntry(".draft/第1章.txt") && !isChapterEntry(".hidden.txt"));
+ok("过滤: 目录项剔除", !isChapterEntry("chapters/"));
+ok("过滤: 非章节扩展剔除", !isChapterEntry("cover.jpg") && !isChapterEntry("readme"));
+ok("过滤: 反斜杠隐藏目录也剔除", !isChapterEntry("book\\.draft\\001.txt") && isChapterEntry("book\\第1章.txt"));
 
 console.log(`\n内容脚本逻辑：${P}/${P + F} 通过`);
 process.exit(F ? 1 : 0);
