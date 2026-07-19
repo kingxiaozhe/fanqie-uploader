@@ -15,7 +15,8 @@ if node -e "require('playwright')" 2>/dev/null; then
   PW_NODE_PATH=""   # 已在默认 require 路径
   HAVE_PW=1
 else
-  PW=$(find "$HOME/.npm/_npx" -maxdepth 4 -type d -name node_modules 2>/dev/null | while read d; do [ -d "$d/playwright" ] && echo "$d" && break; done)
+  # `|| true`：find|while 在最后一个条目非 playwright 目录时以非 0 收尾，set -e 会误杀脚本（缺 playwright 时把跳过误判成失败）
+  PW=$(find "$HOME/.npm/_npx" -maxdepth 4 -type d -name node_modules 2>/dev/null | while read d; do [ -d "$d/playwright" ] && echo "$d" && break; done) || true
   if [ -n "$PW" ]; then PW_NODE_PATH="$PW"; HAVE_PW=1; else HAVE_PW=0; fi
 fi
 
