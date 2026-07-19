@@ -35,7 +35,7 @@
 ### 集成与测试
 
 - [x] T-006: `tests/logic.test.cjs` 对**三个同步函数** `readEOCD`/`readCentralDir`/`sliceEntryData` 做字节级断言（内置最小 STORED zip 与一个 bit3 流式 zip 的字节常量，断言偏移/切片长度/条目名正确）。**如实记录**：DEFLATE 端到端解压依赖 async + DecompressionStream，不在本零依赖沙箱覆盖，须走 playwright 或人工（评审 B1/B7）。`parseZip`/`inflate`/`onZipPicked` 不加入抽取清单 ~40min
-- [ ] T-007: 损坏/加密/分卷/zip64/带注释 zip 友好报错核对（AC-004 + 评审 B4）；文档同步 README/FEATURES 补「ZIP 一键导入」；`manifest.json` 1.8.2 → 1.9.0（单独提交）；复跑 T-001 基线 ~20min
+- [x] T-007: 损坏/加密/分卷/zip64/带注释 zip 友好报错核对（AC-004 + 评审 B4）；文档同步 README/FEATURES 补「ZIP 一键导入」；`manifest.json` 1.8.2 → 1.9.0（单独提交）；复跑 T-001 基线 ~20min
 
 ## 依赖关系
 
