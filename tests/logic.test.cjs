@@ -24,6 +24,10 @@ const popup = fs.readFileSync(path.join(root, "popup/popup.js"), "utf8");
 
 // 沙箱：声明真实代码引用到的模块级变量
 let session, rateBackoff = 1, netPublishResult = null, sawRateLimit = false, document;
+let submitRejectDetail = null;          // publisher: 弹窗内联校验拒绝原因
+let lastPublishedList = null;           // uploader: 接口全量列表缓存（喂给排期接续）
+let chrome = { runtime: { sendMessage() { throw new Error("no-chrome"); } } }; // 日志调用在 try/catch 内，存根即可
+const findLatestScheduledDate = () => null; // DOM 回退扫描存根（测接口全量分支时不触发）
 eval(extract(up, "isNightTime"));
 eval(extract(up, "computePublishTime"));
 eval(extract(up, "nextFreeCadenceSlot"));
@@ -32,6 +36,7 @@ eval(extract(up, "noteRateSignal"));
 eval(extract(up, "pickScheduleMs"));
 eval(extract(up, "latestScheduledFromList"));
 eval(extract(up, "toYMD"));
+eval(extract(up, "computeScheduleStartDate"));
 eval(extract(up, "bumpStartDate"));
 eval(extract(up, "isDailyLimitRejection"));
 eval(extract(up, "rescheduleAfterDailyLimit"));
@@ -104,6 +109,13 @@ netPublishResult = null; sawRateLimit = false;
 ok("归类: 版本冲突", classifyFailure(new Error("版本冲突反复出现，已中止本章（将自动重试）")).reason === "版本冲突");
 ok("归类: 正文未填入", classifyFailure(new Error("正文未成功填入")).reason === "正文未填入");
 ok("归类: 超时未确认", classifyFailure(new Error("未跳转回章节管理页")).reason === "超时未确认");
+// 弹窗内联校验拒绝（走不到接口）：优先暴露真实原因，别被错报成「超时未确认」
+netPublishResult = null; sawRateLimit = false; submitRejectDetail = "定时发布时间不能早于当前时间";
+{
+  const r = classifyFailure(new Error("未跳转回章节管理页"));
+  ok("归类: 弹窗校验拒绝优先(非超时)", r.reason === "校验不通过" && r.detail === "定时发布时间不能早于当前时间", r);
+}
+submitRejectDetail = null;
 
 // ---- 风控检测 ----
 const mkDoc = (sel, text) => ({ querySelector: (q) => (sel && q.includes(sel) ? {} : null), body: { textContent: text || "" } });
@@ -123,6 +135,19 @@ ok("接续: 全量取最晚", latestScheduledFromList([
 ])?.getTime() === dayMs(21, 6));
 ok("接续: 列表无时间 → null", latestScheduledFromList([{ publishMs: null }, {}]) === null);
 ok("接续: 空列表 → null", latestScheduledFromList([]) === null);
+
+// ---- 排期接续起始日：过去/未来边界（修复"最晚已排期落在过去 → 全批排到过去被番茄拒收"）----
+session = { settings: { publishMode: "auto", startDateMode: "auto" } };
+const _tmr = new Date(); _tmr.setDate(_tmr.getDate() + 1);
+lastPublishedList = [{ publishMs: new Date(2020, 0, 1).getTime() }]; // 最晚已排期在很久以前
+ok("接续起始: 最晚排期在过去 → 抬到明天", computeScheduleStartDate() === toYMD(_tmr));
+lastPublishedList = null; // 一条都没读到 → 也不得排到今天/过去
+ok("接续起始: 未读到排期 → 至少明天", computeScheduleStartDate() === toYMD(_tmr));
+const _far = new Date(); _far.setDate(_far.getDate() + 30);
+lastPublishedList = [{ publishMs: _far.getTime() }]; // 最晚已排期在未来
+const _farPlus1 = new Date(_far); _farPlus1.setDate(_farPlus1.getDate() + 1);
+ok("接续起始: 最晚排期在未来 → 次日接续", computeScheduleStartDate() === toYMD(_farPlus1));
+lastPublishedList = null;
 
 // ---- 每日上限(-1020)：判定 + 后续排期整体顺延一天重算 ----
 ok("上限判定: 每日上限文案命中", isDailyLimitRejection("发布被拒", "更新作品数超出每日上限"));
