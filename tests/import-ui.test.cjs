@@ -71,6 +71,19 @@ const clean = (s) => !/�/.test(s); // 无替换符 = 未乱码
   ok("文件夹: 标题无乱码", t.every(clean), t);
   ok("文件夹: 章号顺序 1→2→10", /第1章/.test(t[0]) && /第2章/.test(t[1]) && /第10章/.test(t[2]), t);
 
+  // ---------- ③ 混编码 + 垃圾文件 ZIP（GBK/UTF-8/UTF-16LE 各一章 + 应过滤 __MACOSX/隐藏/非章节）----------
+  if (fs.existsSync(path.join(FIX, "messy.zip"))) {
+    await p.setInputFiles("#zip", path.join(FIX, "messy.zip"));
+    await p.waitForFunction(() => document.querySelectorAll("#list .title").length >= 3, null, { timeout: 8000 }).catch(() => {});
+    t = await titles();
+    ok("混编码: 恰好 3 章（垃圾全过滤）", t.length === 3, t);
+    ok("混编码: 无乱码（GBK/UTF-8/UTF-16LE 全解对）", t.every(clean), t);
+    ok("混编码: GBK 章·起航", t.some((x) => x.includes("起航")), t);
+    ok("混编码: UTF-8 章·风波", t.some((x) => x.includes("风波")), t);
+    ok("混编码: UTF-16LE 章·密信", t.some((x) => x.includes("密信")), t);
+    ok("混编码: 无垃圾泄漏进标题", !t.some((x) => /隐藏文件|JUNK|MACOSX|cover/i.test(x)), t);
+  }
+
   ok("页面无 JS 错误", errors.length === 0, errors);
 
   await b.close();

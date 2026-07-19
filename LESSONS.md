@@ -5,6 +5,7 @@
 - [挂起] 用户反馈 GBK 恰为合法 UTF-8 的误判真实发生 → 再考虑「导入后首章预览」让用户肉眼确认编码（来源 1.chapter-encoding-detect，PRD Q1 本期不做）
 - [挂起] 若出现导入内容损坏但用户没发现 → 给 ZIP 解压加 CRC32 校验（来源 2.zip-import，本期接受不校验：内容发布前用户可见可编辑、截断已被 RangeError 拦）
 - [挂起] 若真出现「注释里含伪中央目录+伪 EOCD」的对抗性 zip → 加「中央目录遍历终点须等于 EOCD 位置」的强校验（来源 2.zip-import r2，本期评为超出本地作者自有文件的威胁模型）
+- [挂起] 若出现【无 BOM】的 UTF-16 稿 → 加无 BOM 的 UTF-16 启发式探测（数空字节）。本期只保证「UTF-16 含 BOM」——真实 Windows「Unicode 另存」本就带 BOM，无 BOM 的 UTF-16 字节恰是合法 UTF-8 无法廉价区分（来源 import-ui 混编码测试实测暴露）
 
 ## 2026-07-19 — 1.chapter-encoding-detect / 编码探测
 
