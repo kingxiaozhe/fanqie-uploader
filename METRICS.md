@@ -6,3 +6,4 @@
 | T-002 | 1.chapter-encoding-detect | — | — | 1 | 0 | — | 0 |
 | T-003 | 1.chapter-encoding-detect | — | — | 1 | 0（并入 T-002 提交） | — | 0 |
 | T-004 | 1.chapter-encoding-detect | — | — | 1 | 1（GBK歧义测试覆盖） | — | 0 |
+| T-005 | 1.chapter-encoding-detect | — | — | 自审(核验类) | — | — | 0 |

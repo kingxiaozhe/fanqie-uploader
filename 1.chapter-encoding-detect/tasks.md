@@ -26,7 +26,7 @@
 ### 集成与测试
 
 - [x] T-004: `tests/logic.test.cjs` 新增 `decodeChapterBytes` 回归用例——喂「你好世界」的 UTF-8 / GBK / UTF-8+BOM / UTF-16LE 字节序列断言均解回原文；边界：纯 ASCII、中英混排、合法 UTF-8 不误判为 GBK ~30min
-- [ ] T-005: 文档与版本同步——README/FEATURES 导入章节补「自动识别 UTF-8/GBK/UTF-16 编码」；`manifest.json` 1.8.1 → 1.8.2（单独提交）；复跑 T-001 基线确认全绿 ~15min
+- [x] T-005: 文档与版本同步——README/FEATURES 导入章节补「自动识别 UTF-8/GBK/UTF-16 编码」；`manifest.json` 1.8.1 → 1.8.2（单独提交）；复跑 T-001 基线确认全绿 ~15min
 
 ## 依赖关系
 
