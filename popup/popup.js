@@ -23,6 +23,8 @@ const $ = (id) => document.getElementById(id);
 
 $("pick").addEventListener("click", () => $("folder").click());
 $("folder").addEventListener("change", onFolderPicked);
+$("pickZip").addEventListener("click", () => $("zip").click());
+$("zip").addEventListener("change", onZipPicked);
 $("selectAll").addEventListener("change", (e) => {
   tasks.forEach((t) => (t.selected = e.target.checked));
   render();
@@ -523,6 +525,163 @@ function decodeChapterBytes(buf) {
     return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
   } catch (_) {
     return new TextDecoder("gbk").decode(bytes);
+  }
+}
+
+// ============================================================
+//  零依赖 ZIP 解析：手写目录结构 + 原生 DecompressionStream 解压。
+//  只支持单卷、未加密、STORED(0)/DEFLATE(8)；加密/分卷/zip64 一律报错，
+//  绝不静默错解（避免脏数据混入发布）。所有报错文案不含裸花括号（测试抽取器按裸花括号计深度）。
+//  可测面：readEOCD / readCentralDir / sliceEntryData 为同步纯函数，进 logic.test.cjs；
+//  parseZip / inflate / onZipPicked 因 async 不进抽取（抽取器丢 async 关键字会打爆测试）。
+// ============================================================
+
+const ZIP_MAX_ENTRY = 64 * 1024 * 1024;   // 单文件解压上限（字节）：防「解压炸弹」撑爆内存
+const ZIP_MAX_TOTAL = 512 * 1024 * 1024;  // 整包解压总量上限：防多个小于单文件上限的条目累计撑爆
+
+// 从尾部倒扫 EOCD（End of Central Directory，签名 PK\x05\x06）。
+// 覆盖 22 + 最长 65535 字节注释区；中央目录起点用【EOCD 位置反推】(pos - cdSize)，
+// 自动纠正自解压/前置数据造成的偏移偏差；再校验起点确有中央目录签名，挫败注释里的伪 EOCD。
+function readEOCD(dv) {
+  const EOCD_SIG = 0x06054b50, CD_SIG = 0x02014b50, MIN = 22, len = dv.byteLength;
+  if (len < MIN) throw new Error("ZIP 太小或非法");
+  const maxScan = Math.min(len - MIN, 65535);
+  for (let i = 0; i <= maxScan; i++) {
+    const pos = len - MIN - i;
+    if (dv.getUint32(pos, true) !== EOCD_SIG) continue;
+    const commentLen = dv.getUint16(pos + 20, true);
+    if (pos + MIN + commentLen !== len) continue; // 注释长度须与实际吻合，排除误命中
+    const cdCount = dv.getUint16(pos + 10, true);
+    const cdSize = dv.getUint32(pos + 12, true);
+    const cdOffsetRaw = dv.getUint32(pos + 16, true);
+    if (cdOffsetRaw === 0xffffffff || cdCount === 0xffff) throw new Error("暂不支持 zip64 大压缩包");
+    const cdOffset = pos - cdSize; // 反推起点，兼容前置 stub 的自解压/拼接 ZIP
+    if (cdCount > 0 && (cdOffset < 0 || dv.getUint32(cdOffset, true) !== CD_SIG)) continue; // 伪 EOCD → 继续找
+    return { cdOffset, cdCount, delta: cdOffset - cdOffsetRaw }; // delta：前置数据长度，用于同步纠正各条目 localOffset
+  }
+  throw new Error("未找到 ZIP 目录，文件可能损坏或非 ZIP");
+}
+
+// 遍历中央目录（签名 PK\x01\x02），每条取文件名/方法/压缩·解压大小(真值只信中央目录)/局部头偏移/标志位。
+function readCentralDir(dv, eocd) {
+  const CD_SIG = 0x02014b50;
+  const entries = [];
+  let p = eocd.cdOffset;
+  for (let n = 0; n < eocd.cdCount; n++) {
+    if (dv.getUint32(p, true) !== CD_SIG) throw new Error("ZIP 中央目录损坏");
+    const flags = dv.getUint16(p + 8, true);
+    const method = dv.getUint16(p + 10, true);
+    const compressedSize = dv.getUint32(p + 20, true);
+    const uncompressedSize = dv.getUint32(p + 24, true);
+    const nameLen = dv.getUint16(p + 28, true);
+    const extraLen = dv.getUint16(p + 30, true);
+    const commentLen = dv.getUint16(p + 32, true);
+    const localOffset = dv.getUint32(p + 42, true) + (eocd.delta || 0); // 同步纠正前置 stub 偏移
+    if (flags & 0x1) throw new Error("暂不支持加密 ZIP");
+    if (compressedSize === 0xffffffff || uncompressedSize === 0xffffffff || localOffset === 0xffffffff)
+      throw new Error("暂不支持 zip64 大压缩包");
+    const nameBytes = new Uint8Array(dv.buffer, dv.byteOffset + p + 46, nameLen).slice();
+    entries.push({ nameBytes, method, compressedSize, uncompressedSize, localOffset, flags });
+    p += 46 + nameLen + extraLen + commentLen;
+  }
+  return entries;
+}
+
+// 是否为要导入的章节条目：剔除 __MACOSX 元数据、隐藏文件/目录（任一路径段以点开头）、目录项，只留章节扩展名。
+function isChapterEntry(name) {
+  const norm = name.replace(/\\/g, "/"); // 个别 Windows 工具误用反斜杠作分隔符，归一后再判
+  if (norm.startsWith("__MACOSX/")) return false;
+  if (norm.endsWith("/")) return false;
+  if (norm.split("/").some((seg) => seg.startsWith("."))) return false;
+  return /\.(txt|md|markdown)$/i.test(norm);
+}
+
+// 定位局部头（签名 PK\x03\x04）取压缩数据切片：起点用【局部头自己】的 name/extra 长度算，
+// 切片长度用【中央目录】的 compressedSize——绕过 GP bit3 流式写入时局部头 size 为 0 的坑。
+function sliceEntryData(dv, entry) {
+  const LOCAL_SIG = 0x04034b50, p = entry.localOffset;
+  if (dv.getUint32(p, true) !== LOCAL_SIG) throw new Error("ZIP 局部头损坏");
+  const nameLen = dv.getUint16(p + 26, true);
+  const extraLen = dv.getUint16(p + 28, true);
+  const dataStart = p + 30 + nameLen + extraLen;
+  const slice = new Uint8Array(dv.buffer, dv.byteOffset + dataStart, entry.compressedSize).slice();
+  return { method: entry.method, slice };
+}
+
+// 解压单条数据：STORED 直取；DEFLATE 走原生 DecompressionStream（零依赖）。async，不进测试抽取。
+async function inflate(slice, method) {
+  if (method === 0) return slice;
+  if (method !== 8) throw new Error("暂不支持的压缩方式 method=" + method);
+  // 流式读取并边解边计数：DEFLATE 声明的大小可能撒谎，实际输出超上限立即中止，防解压炸弹撑爆内存
+  const reader = new Blob([slice]).stream().pipeThrough(new DecompressionStream("deflate-raw")).getReader();
+  const chunks = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.length;
+    if (total > ZIP_MAX_ENTRY) { await reader.cancel(); throw new Error("ZIP 内单文件过大，已中止（疑似异常压缩包）"); }
+    chunks.push(value);
+  }
+  const out = new Uint8Array(total);
+  let off = 0;
+  for (const c of chunks) { out.set(c, off); off += c.length; }
+  return out;
+}
+
+// 解析整个 ZIP → [{ name, bytes }]，只含章节文件。async（await inflate），不进测试抽取。
+// 先按名过滤再解压：非章节文件（封面/元数据/怪压缩法）绝不解压，既省内存也不因无关文件中止全局。
+async function parseZip(buf) {
+  const dv = new DataView(buf);
+  const entries = readCentralDir(dv, readEOCD(dv));
+  const out = [];
+  let total = 0;
+  for (const e of entries) {
+    const name = decodeChapterBytes(e.nameBytes.buffer);
+    if (!isChapterEntry(name)) continue;
+    // 声明大小先卡一道（compressedSize 覆盖 STORED 撒谎、uncompressedSize 覆盖诚实 DEFLATE）
+    if (e.uncompressedSize > ZIP_MAX_ENTRY || e.compressedSize > ZIP_MAX_ENTRY)
+      throw new Error("ZIP 内单文件过大，已中止（疑似异常压缩包）");
+    const { method, slice } = sliceEntryData(dv, e);
+    const bytes = await inflate(slice, method); // DEFLATE 实际输出再卡一道（见 inflate 流式计数）
+    total += bytes.length;
+    if (total > ZIP_MAX_TOTAL) throw new Error("ZIP 解压总量过大，已中止（疑似异常压缩包）");
+    out.push({ name, bytes });
+  }
+  return out;
+}
+
+// ZIP 入口：parseZip 已只返回章节文件 → 复用 decodeChapterBytes 与现有解析流水线组装 tasks。
+async function onZipPicked(e) {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+  let chapters;
+  try {
+    chapters = await parseZip(await file.arrayBuffer());
+  } catch (err) {
+    alert("ZIP 解析失败：" + ((err && err.message) || err));
+    return;
+  }
+  if (!chapters.length) { alert("ZIP 内没有 .txt / .md 文件"); return; }
+  folderName = file.name.replace(/\.zip$/i, "") || "已选择";
+  $("zipName").textContent = folderName;
+  chapters.sort((a, b) => (numFromName(a.name.split("/").pop()) || 0) - (numFromName(b.name.split("/").pop()) || 0));
+  tasks = [];
+  for (const it of chapters) {
+    const base = it.name.split("/").pop();
+    const raw = decodeChapterBytes(it.bytes.buffer).replace(/\r\n/g, "\n").trim();
+    const { title, content } = splitTitleBody(raw, base);
+    const chapterNumber = numFromName(base) || numFromText(raw);
+    tasks.push({
+      id: cryptoId(), fileName: base, title, chapterNumber, content,
+      wordCount: content.replace(/\s/g, "").length, selected: true,
+    });
+  }
+  render();
+  const auto = await fetchPublishedFromPage();
+  if (auto.ok && auto.list.length) {
+    const n = dropPublished(auto.list);
+    if (n) toast(`已自动移除 ${n} 章已发布的，仅保留待发`);
   }
 }
 
