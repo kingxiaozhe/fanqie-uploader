@@ -198,7 +198,7 @@ function openWordEditor() {
   });
 }
 
-// #2.2 安全档位：一键套用一组反风控参数（间隔/偏移/上限/拟人/夜间避让）
+// #2.2 操作节奏预设：一键套用间隔、偏移、批次上限与夜间避让
 const PRESETS = {
   conservative: { pace: "1.6", gapMin: 60, gapMax: 180, minuteJitter: 15, maxPerBatch: 8, humanize: true,  nightAvoid: true  },
   standard:     { pace: "1.6", gapMin: 30, gapMax: 90,  minuteJitter: 10, maxPerBatch: 0, humanize: true,  nightAvoid: false },
@@ -239,7 +239,7 @@ function collectSettings() {
     autoRetry: $("autoRetry").checked,
     maxRetries: 3,
     pace: Number($("pace").value) || 1,                // 操作节奏倍率（>1 更慢更稳）
-    humanize: $("humanize").checked,                   // 拟人随机延迟（反识别）
+    humanize: $("humanize").checked,                   // 输入与操作间隔抖动（保留字段名兼容旧设置）
     gapMin: Math.max(0, +$("gapMin").value || 5),      // 章节间隔随机下限（秒）
     gapMax: Math.max(1, +$("gapMax").value || 20),     // 章节间隔随机上限（秒）
     minuteJitter: Math.max(0, +$("minuteJitter").value || 0), // 发布时间随机偏移±分钟
