@@ -21,11 +21,11 @@
   let submitted = false;      // 是否已点"下一步"创建了章节（失败后据此决定能否重试，防重复发布）
   let batchPaused = false;    // #2.1 检测到风控(验证码/账号异常)：暂停整批，保留本页供人工处理
   let paceFactor = 1;         // 操作节奏倍率（>1 更慢，降低出错率），来自设置
-  let humanize = true;        // 拟人随机延迟（降低被识别为工具的概率）
+  let humanize = true;        // 输入与操作间隔抖动（字段名兼容旧设置）
 
   // 随机整数 [min,max]
   function rand(min, max) { return Math.floor(min + Math.random() * (max - min + 1)); }
-  // 拟人抖动：在基准毫秒上叠加 ±40% 随机（关闭则原样返回）
+  // 间隔抖动：在基准毫秒上叠加 ±40% 随机（关闭则原样返回）
   function jitter(ms) { return humanize ? ms * (0.8 + Math.random() * 0.6) : ms; }
   let statusEl = null;        // 页面顶部状态横幅
   const DEBUG = false;        // 调试模式：true=失败保留标签页不重试；正式批量请保持 false
@@ -123,7 +123,7 @@
   const PUBLISH_RESULT_TIMEOUT_MS = 32000; // 发布结果判定墙钟超时（原 40 tick×800ms 的等价预算）
 
   // ============================================================
-  //  时延集中配置（毫秒）—— 调节奏只改这里。delay() 会另行叠加拟人抖动与节奏倍率
+  //  时延集中配置（毫秒）—— 调节奏只改这里。delay() 会另行叠加间隔抖动与节奏倍率
   // ============================================================
   const TIMINGS = {
     taskRetry: 500,           // REQUEST_TASK 任务未就绪时的重试间隔
@@ -327,7 +327,7 @@
       const { upload_session } = await chrome.storage.local.get("upload_session");
       currentSettings = upload_session?.settings || {};
       paceFactor = currentSettings.pace || 1; // 操作节奏：放慢所有 delay
-      humanize = currentSettings.humanize !== false; // 拟人随机延迟，默认开
+      humanize = currentSettings.humanize !== false; // 输入与操作间隔抖动，默认开
 
       if (await stopRequested()) return abortByStop(task, sessionId);
       setStatus("⏳ 等待编辑器加载…");
@@ -447,7 +447,7 @@
     for (const ch of text) {
       setNativeValue(el, el.value + ch);
       el.dispatchEvent(new Event("input", { bubbles: true }));
-      // 逐字输入随机间隔：开启拟人时 30~120ms 不等，模拟真人手速；偶尔"停顿"
+      // 逐字输入随机间隔：开启后使用 30~120ms 间隔并偶尔停顿
       await new Promise((r) => setTimeout(r, (humanize ? rand(30, 120) : 20) * paceFactor));
       if (humanize && Math.random() < 0.05) await new Promise((r) => setTimeout(r, rand(250, 600)));
     }

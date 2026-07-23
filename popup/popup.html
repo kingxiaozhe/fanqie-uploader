@@ -176,7 +176,7 @@
     <legend>发布设置</legend>
 
     <div class="frow">
-      <span>安全档位<div class="hint">一键套用反风控参数</div></span>
+      <span>操作节奏预设<div class="hint">一键设置间隔、偏移与批次上限</div></span>
       <div class="presets">
         <button type="button" class="preset" data-preset="conservative">保守</button>
         <button type="button" class="preset" data-preset="standard">标准</button>
@@ -226,7 +226,7 @@
     <div class="frow"><span>发布时间随机偏移</span>
       <span class="rng">± <input type="number" id="minuteJitter" class="num" value="10" min="0" max="120" /> 分</span>
     </div>
-    <div class="frow"><span>本次最多发布<div class="hint">到量自动停，降低风控</div></span>
+    <div class="frow"><span>本次最多发布<div class="hint">到量自动停，便于分批复核</div></span>
       <span class="rng"><input type="number" id="maxPerBatch" class="num" value="0" min="0" max="999" /> 章</span>
     </div>
     <div class="frow"><span>字数偏短提醒<div class="hint">正文少于此值的章节标红（0=关）</div></span>
@@ -239,7 +239,7 @@
     <div class="frow" id="nightRow" hidden><span>夜间时段</span>
       <span class="rng"><input type="time" id="nightStart" class="num" value="23:00" /> ~ <input type="time" id="nightEnd" class="num" value="07:00" /></span>
     </div>
-    <div class="frow"><span>🎭 拟人随机延迟</span><input type="checkbox" id="humanize" class="tg" checked /></div>
+    <div class="frow"><span>输入与操作间隔抖动</span><input type="checkbox" id="humanize" class="tg" checked /></div>
     <div class="frow"><span>失败自动重试（最多 3 次）</span><input type="checkbox" id="autoRetry" class="tg" checked /></div>
     <div class="frow"><span>全面检测（每章 2 次额度）</span><input type="checkbox" id="fullDetection" class="tg" checked /></div>
     <div class="frow"><span>声明使用 AI</span>

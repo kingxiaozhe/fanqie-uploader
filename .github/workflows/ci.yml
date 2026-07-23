@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - master
+      - "portfolio/**"
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: "22"
+
+      - name: Install browser test runtime
+        run: |
+          npm install --global playwright@1.61.1
+          playwright install --with-deps chromium
+
+      - name: Generate import fixtures
+        run: bash tests/make-fixtures.sh
+
+      - name: Run regression suites
+        run: bash tests/run.sh
+
+      - name: Build and inspect release package
+        run: |
+          ./pack.sh
+          unzip -t fanqie-uploader-v1.9.0.zip
+
+      - name: Scan Git history with Gitleaks
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

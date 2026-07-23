@@ -3,6 +3,7 @@ node_modules/
 dist/
 *.zip
 *.crx
+output/
 
 # cm:ai 工作流运行时状态（非产物，不入库）
 .cm-status.json
